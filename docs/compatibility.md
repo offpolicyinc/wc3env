@@ -100,3 +100,25 @@ GCP spot `n2d-standard-8` VMs (8 vCPUs = 4 AMD cores, kernel 7.0, Ubuntu 24.04) 
 - `rollout` ([`vector_rollout.py`](../docker/vector_rollout.py)): `VectorSession` from native Linux
   Python driving Wine workers, eight games in groups of two, as a trainer would run it. 17 s
   startup, then 522 steps/s = 130x aggregate realtime, about 14 game seconds per vCPU second.
+
+## Ladder replays
+
+`wc3env.w3g` reads classic replays (players, map and checksum, every command); `launch(map=replay)`
+plays them back in stepping mode with observations. warcraft3.info lists 700 Battle.net 1v1 replays
+tagged 1.29 (tournament and ladder games of 2018; `tools/fetch_replays.py`). Checked on 2026-09-29 with
+`tools/check_replays.py`, each played to its end:
+
+| Result | Replays |
+|---|---|
+| Play to the end in sync (152.6 hours of games) | 609 |
+| Map not installed (community maps: Fields of Ruin, older 1v1 Flood Plains, Ancient Isles, Irresistible Mind, Nomad Isles, Violet Outpost, Fertile Creek) | 53 |
+| Does not load: recorded before 1.29.2 (uploaded April 2018; the map checksum differs on every map) | 36 |
+
+In sync means the units each player selects exist in the playback: the median miss rate is 0.75% and
+the 95th percentile 3.7%, units that died within the checked second. Where warcraft3.info's parser
+detected a winner (320 of the 609), the playback agrees in 317; the 3 others miss almost nothing, so
+the reference is likely wrong there. 25 replays have a minute with 20% or more misses (big fights,
+many deaths within a second); the 12 of them with a winner reference all agree. A few replays name a stock map under another file name
+(`TSLV.w3x`, `floodplains1v1_LV.w3x`, `Download/thetworivers_LV.w3x`); a copy of the stock map at that
+path plays them. The playback's result is empty when the recording ends in the same second as the game.
+

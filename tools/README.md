@@ -11,6 +11,7 @@
 | `profile_game.py` | Samples a stepping game's threads from outside: CPU per thread, modules and exe functions on the stack |
 | `winproc.py` | CPU (exact cycle counts) and memory of a Windows process, shared by the tools above and `check_compatibility.py` |
 | `example_observation.py` | Regenerate `docs/examples/observation.json` from a real game |
+| `fetch_replays.py`, `check_replays.py` | Download a patch's 1v1 replays from warcraft3.info; play each to its end and check it stays in sync ([results](../docs/compatibility.md#ladder-replays)) |
 
 ## Prepare agent inputs
 

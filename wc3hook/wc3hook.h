@@ -12,7 +12,7 @@
  *                 turn packet delivery
  *   observe.c     the observation: accessors copied from the natives, fog, inventory, ground
  *                 items, destructables, the game result per player
- *   events.c      game events from a detour on the trigger-event dispatcher (0xbcd00)
+ *   events.c      game events from detours on the per-kind event fire functions
  *   act.c         orders through the player command queue
  *   players.c     startup AI suppression and offline command identities
  *   stage.c       staging natives behind the `debug` ops (spawn, kill, give, ...)
@@ -127,7 +127,6 @@
 #define RVA_POS_UNPACK 0x3fcc50
 #define RVA_ITEM_IN_SLOT 0x291820
 #define RVA_PROTECTED_INT 0x3fb2b0
-#define RVA_RESOLVE_REF 0x0707f0
 #define RVA_RESOLVE_PAIR 0x3fc7e0 /* (ecx = &ref pair) -> object or 0: items' owners, abilities */
 #define RVA_VM_GLOBAL 0xd3b6f4    /* the JASS VM, set whenever a map is loaded */
 #define RVA_VM_STR_CTX 0x069010   /* JassStringToC / the VM string context, for the script version */
@@ -209,7 +208,6 @@ extern volatile LONG g_frames_seen;
 
 /* ---- observe.c -------------------------------------------------------------------------------- */
 typedef void(__cdecl *EnumObjectsFn)(int cls, void *cb, void *ctx, int zero);
-typedef BYTE *(__cdecl *ResolveRefFn)(DWORD id, DWORD salt); /* RVA_RESOLVE_REF */
 typedef int(__cdecl *NativeI_V)(void);
 typedef int(__cdecl *NativeI_I)(int);
 typedef int(__cdecl *NativeI_II)(int, int);

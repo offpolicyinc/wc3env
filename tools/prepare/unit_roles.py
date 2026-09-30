@@ -11,11 +11,11 @@ from collections import Counter
 
 from wc3agent.game.roles import ROLES, TABLE, stats_role
 
-from wc3env.data import REFERENCE as REFERENCE_PATH
+from wc3env.data import REFERENCE
 
 
 def main():
-    units = json.loads(REFERENCE_PATH.read_text(encoding="utf-8"))["units"]
+    units = json.loads(REFERENCE.read_text(encoding="utf-8"))["units"]
     table = json.loads(TABLE.read_text(encoding="utf-8"))
     assigned = table["assigned"]
     unknown = {raw: kind for raw, kind in assigned.items() if kind not in ROLES}

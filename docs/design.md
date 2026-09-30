@@ -114,8 +114,16 @@ damage, hero stats) come from natives on each listed unit's handle, created once
 cap. Exclude hidden, loaded and Locust units and apply each observer's fog. Old map scripts
 map neutral JASS IDs 12–15 to internal slots 24–27.
 
-Hook event dispatch (`0x0bcd00`) and its registration check (`0x43f0c0`). Spell effects need
-their firing hook (`0x0bbd60`) while the ability is valid. Snapshot values and visibility
+Observing must never create or remove game objects, not even a temporary one: the engine reuses
+object IDs, so one extra object shifts every later ID, and a replay's recorded orders name units by
+ID (a ladder replay then diverges within seconds: its players' orders miss their units). Handles
+for existing units are harmless.
+
+Events come from detours on the per-kind fire functions (`0x0b95f0`..`0x0bcad0`, one per kind),
+read from their arguments at entry. Nothing is registered on the game's behalf: a registered kind
+makes the engine build an event object, an agent that shifts later object IDs. Spell effects are
+read one level up (`0x28ccd0`, the casting unit and the ability), since the fire function there
+runs only when a trigger is registered. Snapshot values and visibility
 before objects change; retain no game pointers. Death ownership precedes defeat transfers;
 summon's trigger unit is the summoned unit. Each observer has a bounded visible-event
 history: hidden activity affects neither retention nor loss counts. Never infer death from
@@ -123,8 +131,8 @@ disappearance. Agents select resources from visible destructables and type IDs, 
 first-base or nearest-tree shortcut.
 
 Player categories, alliances and own scores come from runtime natives. Resource labels use
-loaded object data, including custom tree types. World bounds cache four numbers per episode;
-the temporary native rectangle is released immediately. See [metadata](specs/observations.md#observation-metadata).
+loaded object data, including custom tree types. World bounds cache four numbers per episode,
+copied by the routine `GetWorldBounds` uses (`0x3036f0`), without its rectangle. See [metadata](specs/observations.md#observation-metadata).
 
 ## Rendering and input
 
@@ -183,7 +191,6 @@ Pipe probes: `where`, `profile`, `watch`, `scan`, `dump`, `trace`, `pktlog`, `st
 game spends CPU, on Windows and under Wine.
 Native calls use 32-bit argument slots, float pointers for real arguments and bits for real
 returns. Staging may allocate VM handles (`0x077710`, `0x4e72c0`); object enumeration itself must not.
-The bounds cache uses one temporary rectangle per episode and releases it immediately.
 MPQ extraction needs StormLib; see [tools](../tools/README.md).
 
 ## Agent integration and Linux workers

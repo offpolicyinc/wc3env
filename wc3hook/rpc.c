@@ -353,7 +353,8 @@ static void create_job(void *a) {
         int race = NATIVE(RVA_N_PLAYERRACE, NativeI_I)(handle);
         int control = NATIVE(RVA_N_PLAYERCONTROL, NativeI_I)(handle);
         int state = NATIVE(RVA_N_PLAYERSLOTSTATE, NativeI_I)(handle);
-        if (state != 1 || race < 1 || race > 4 ||
+        /* a replay recorded by an observer (tournament replays) reads every player as left (2) */
+        if ((state != 1 && !(state == 2 && game_is_replay())) || race < 1 || race > 4 ||
             (j->races[p] >= 0 && race != j->races[p] && !(j->races[p] == 0 && setup_random_race(p))) ||
             (control != j->controls[p] && !(control == 1 && j->controls[p] == 0 && player_prepared_agent(p)))) {
             _snprintf(j->error, sizeof j->error,

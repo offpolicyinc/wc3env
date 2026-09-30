@@ -135,9 +135,10 @@ visible units owned by anyone else, including allies and neutrals.
 
 `map.bounds` contains `min_x`, `min_y`, `max_x`, and `max_y` in world coordinates.
 Bounds describe the engine's world rectangle, including its border; they do not
-promise navigable ground. Only four numbers are cached. The temporary engine
-rectangle used to read them is released immediately and the cache clears on reset.
-Enumerating observed units, items, and destructables does not allocate handles.
+promise navigable ground. Only four numbers are cached, read without creating an
+engine object; the cache clears on reset.
+Observing creates no game objects: listed units get a JASS handle (created once per unit, reused), which is
+not an engine object and leaves object ids, and so replays, unchanged.
 
 Visible living destructables additionally have `resource` (`lumber` or null) and
 `invulnerable`. Lumber classification comes from the loaded object-data tree

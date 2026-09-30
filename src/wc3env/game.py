@@ -62,6 +62,7 @@ class Game:
         self.map = map
         self._closed = False
         self.data_dir = docs
+        self.startup: dict = {}  # match setup, AI difficulty and AI slots this process started with
 
     def close(self) -> None:
         if self._closed:
@@ -133,6 +134,11 @@ def user_dir(instance: int | None = None, *, output_dir: str | Path | None = Non
     return root / f"{label}-{uuid.uuid4().hex}"
 
 
+def replay_startup_path(replay: Path) -> Path:
+    """Where save_replay keeps a replay's startup options (match setup, AI difficulty, AI slots)."""
+    return replay.with_name(replay.name + ".json")
+
+
 def resolve_map(map: str | Path | None = None) -> Path:
     """An absolute path, a path under the install, or a unique filename under Maps/."""
     cfg = settings()
@@ -196,11 +202,19 @@ def launch(
         raise ValueError("background_visible requires background window mode and a bool")
     if ai_difficulty is not None and (type(ai_difficulty) is not int or ai_difficulty not in (0, 1, 2)):
         raise ValueError("ai_difficulty must be None, 0 (easy), 1 (normal), or 2 (insane)")
+    map_path = resolve_map(map)
+    if map_path.suffix.lower() == ".w3g":
+        # A staged game replays only from the same start: the setup shapes the map's player configuration and
+        # the AI difficulty its melee AI, neither of which the .w3g records; save_replay keeps them beside it.
+        if _setup is not None or ai_difficulty is not None:
+            raise ValueError("replay playback takes match setup and AI difficulty from the replay's saved startup")
+        saved = replay_startup_path(map_path)
+        if saved.is_file():
+            startup = json.loads(saved.read_text(encoding="utf-8"))
+            _setup, ai_difficulty = startup.get("setup"), startup.get("ai_difficulty")
+            ai_agents = tuple(startup.get("ai_agents", ())) or ai_agents
     if not set(ai_agents) <= set(agents):
         raise ValueError("ai_agents must be agent slots")
-    map_path = resolve_map(map)
-    if map_path.suffix.lower() == ".w3g" and (_setup is not None or ai_difficulty is not None):
-        raise ValueError("replay playback cannot apply match setup or AI difficulty overrides")
     try:
         # Warcraft reads -loadfile through its ANSI command line, even though injection is Unicode.
         if str(map_path).encode("mbcs", errors="strict").decode("mbcs") != str(map_path):
@@ -236,6 +250,9 @@ def launch(
         },
     )
     game = Game(pid, HookPipe(pid), map_path, docs, process_handle=process_handle)
+    game.startup = {
+        k: v for k, v in {"setup": _setup, "ai_difficulty": ai_difficulty, "ai_agents": list(ai_agents)}.items() if v
+    }
     try:
         game.pipe.connect(connect_timeout)
         return game

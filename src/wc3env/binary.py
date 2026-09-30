@@ -83,7 +83,11 @@ DTYPES = {
     ),
     "research": np.dtype([("type_id", _U4), ("level", _I4)]),
 }
-HEADER = struct.Struct("<6I4i2If25iI30I")  # obsbin.h BinHeader: 276 bytes, one unpack per observation
+# obsbin.h BinHeader: 276 bytes, one unpack per observation; the table entries follow the table count
+HEADER = struct.Struct(f"<6I4i2If{len(SCORE_FIELDS)}iI{3 * len(TABLES)}I")
+_TIME_OF_DAY = 12
+_SCORE = slice(_TIME_OF_DAY + 1, _TIME_OF_DAY + 1 + len(SCORE_FIELDS))
+_TABLE_ENTRIES = _SCORE.stop + 1
 
 # units.flags
 OWN, STRUCTURE, HERO, INSIDE, ILLUSION, DEAD = 1, 2, 4, 8, 16, 32
@@ -150,7 +154,7 @@ class BinaryObservation:
     research: np.ndarray
     raw: bytes = field(repr=False)  # the records the arrays view
 
-    def __reduce__(self):  # pickle as the bytes (VectorSession's pipes): cheaper than eight arrays
+    def __reduce__(self):  # pickle as the bytes (VectorSession's pipes): cheaper than the arrays
         return parse, (self.raw,)
 
     @cached_property
@@ -183,7 +187,7 @@ def parse(data: bytes) -> BinaryObservation:
         raise ValueError("binary observation header does not match this wc3env version")
     tables = {}
     for i, name in enumerate(TABLES):
-        offset, count, record_size = h[39 + 3 * i : 42 + 3 * i]
+        offset, count, record_size = h[_TABLE_ENTRIES + 3 * i : _TABLE_ENTRIES + 3 * i + 3]
         if record_size != DTYPES[name].itemsize:
             raise ValueError(f"binary observation table {name} does not match this wc3env version")
         tables[name] = np.frombuffer(data, DTYPES[name], count, offset)
@@ -197,8 +201,8 @@ def parse(data: bytes) -> BinaryObservation:
         food_cap=food_cap,
         result=RESULTS[result],
         events_lost=lost,
-        time_of_day=h[12],
-        score=dict(zip(SCORE_FIELDS, h[13:38])),
+        time_of_day=h[_TIME_OF_DAY],
+        score=dict(zip(SCORE_FIELDS, h[_SCORE])),
         raw=data,
         **tables,
     )

@@ -312,8 +312,6 @@ int unit_order_point(BYTE *u, unsigned *id, float *x, float *y) {
  * starting with B ('Bprg' purged, 'Bblo' bloodlust). Internal abilities (movement, inventory, production)
  * are on the chain too; the client tells them apart by id. Nothing here says whether a cast would succeed,
  * and a buff's remaining time is not read. */
-typedef int(__cdecl *NativeI_HI)(int, int);
-typedef int(__cdecl *NativeI_HII)(int, int, int);
 /* The class tag is the ability's base class ('Aprg'); a variant the unit actually has (the Shaman's 'Apg2',
  * the Spirit Walker's 'Adcn' on class 'Adis') reads level 0 under it. The object also holds its own id:
  * find the four-character code in it that the unit has a level of. Returns that level (0 if none). */
@@ -322,7 +320,7 @@ static int variant_id(BYTE *a, int handle, DWORD *aid, int buff) {
     int offset = offsets[buff];
     if (offset >= 0) {
         DWORD id = *(DWORD *)(a + offset);
-        int level = NATIVE(RVA_N_UNITABILITYLEVEL, NativeI_HI)(handle, (int)id);
+        int level = NATIVE(RVA_N_UNITABILITYLEVEL, NativeI_II)(handle, (int)id);
         if (level > 0) {
             *aid = id;
             return level;
@@ -333,7 +331,7 @@ static int variant_id(BYTE *a, int handle, DWORD *aid, int buff) {
         BYTE first = (BYTE)(id >> 24);
         if (id == *aid || (buff ? first != 'B' : first != 'A' && first != 'S'))
             continue; /* ability ids start with A (or S for some specials), buff ids with B */
-        int level = NATIVE(RVA_N_UNITABILITYLEVEL, NativeI_HI)(handle, (int)id);
+        int level = NATIVE(RVA_N_UNITABILITYLEVEL, NativeI_II)(handle, (int)id);
         if (level > 0) {
             if (offset < 0) {
                 offsets[buff] = off;
@@ -368,16 +366,16 @@ static void gather_chain(Obs *o, BYTE *u, BinUnit *r, int handle) {
         }
         if (!handle)
             break;
-        int level = NATIVE(RVA_N_UNITABILITYLEVEL, NativeI_HI)(handle, (int)id);
+        int level = NATIVE(RVA_N_UNITABILITYLEVEL, NativeI_II)(handle, (int)id);
         if (level <= 0 && (level = variant_id(a, handle, &id, buff)) <= 0)
             continue;
         if (buff) {
             BinBuff b = {r->unit_id, id};
             bb_push(&o->t[T_BUFFS], &b, sizeof b);
         } else {
-            BinAbility b = {r->unit_id, id, level, NATIVE(RVA_N_ABILITYMANACOST, NativeI_HII)(handle, (int)id, level),
-                            bits_to_f(NATIVE(RVA_N_ABILITYCOOLDOWN, NativeI_HII)(handle, (int)id, level)),
-                            bits_to_f(NATIVE(RVA_N_ABILITYCOOLDOWNLEFT, NativeI_HI)(handle, (int)id))};
+            BinAbility b = {r->unit_id, id, level, NATIVE(RVA_N_ABILITYMANACOST, NativeI_III)(handle, (int)id, level),
+                            bits_to_f(NATIVE(RVA_N_ABILITYCOOLDOWN, NativeI_III)(handle, (int)id, level)),
+                            bits_to_f(NATIVE(RVA_N_ABILITYCOOLDOWNLEFT, NativeI_II)(handle, (int)id))};
             bb_push(&o->t[T_ABILITIES], &b, sizeof b);
         }
     }
@@ -388,8 +386,7 @@ static void gather_chain(Obs *o, BYTE *u, BinUnit *r, int handle) {
     r->queue_seconds = queue && *(DWORD *)(queue + 0xa8) ? *(float *)(queue + 0x7c) : 0;
 }
 
-/* Hero stats: attributes with item and aura bonuses for any visible hero (its info panel shows them), XP and
- * unspent skill points for the observer's own. */
+/* obsbin.h BinHero: attributes for any visible hero, XP and skill points for the observer's own */
 static void obs_hero(Obs *o, DWORD unit_id, int handle, int own) {
     BinHero h = {unit_id};
     if (own) {
@@ -401,8 +398,7 @@ static void obs_hero(Obs *o, DWORD unit_id, int handle, int own) {
     h.intelligence = NATIVE(RVA_N_HEROINT, NativeI_II)(handle, 1);
     bb_push(&o->t[T_HEROES], &h, sizeof h);
 }
-/* UnitItemInSlot: inventory ability [u+0x404]; item type [+0x34], charges [+0x18c]. Any listed unit's: a player
- * can click an enemy hero and see its items. */
+/* UnitItemInSlot: inventory ability [u+0x404]; item type [+0x34], charges [+0x18c] */
 static void obs_inventory(Obs *o, BYTE *u, DWORD unit_id) {
     for (DWORD slot = 0; *(BYTE **)(u + 0x404) && slot < 6; slot++) {
         BYTE *it = unit_item_in_slot(u, slot);
@@ -412,8 +408,7 @@ static void obs_inventory(Obs *o, BYTE *u, DWORD unit_id) {
         }
     }
 }
-/* The numbers the unit's info panel shows: armor, the first weapon's damage range (base + dice) and attack
- * period, move speed and facing (degrees). */
+/* obsbin.h BinUnit's info-panel numbers; this build's weapon natives count weapons from 1 */
 static void obs_combat(BinUnit *r, int handle) {
     r->armor = bits_to_f(NATIVE(RVA_N_UNITARMOR, NativeI_I)(handle));
     int base = NATIVE(RVA_N_UNITBASEDAMAGE, NativeI_II)(handle, 1);
@@ -432,61 +427,52 @@ static int __cdecl obs_unit_cb(BYTE *u, void *ctx) {
     Obs *o = (Obs *)ctx;
     float life = bits_to_f(unit_state_bits(u, 0));
     BYTE *pl = unit_owner(u);
-    int owner = pl ? player_jass_id(pl) : -1;
-    if (life <= 0) {
-        /* the observer's dead heroes stay listed (BU_DEAD) for revival: position, level, stats, items */
-        int handle;
-        if (owner != o->player || !unit_is_hero(u) || (unit_flags(u) & UF_ILLUSION) || !(handle = handle_of(u)))
+    int owner = pl ? player_jass_id(pl) : -1, own = owner == o->player, inside = 0;
+    /* every row is alive but the observer's dead heroes (BU_DEAD), listed for revival */
+    int dead = life <= 0;
+    if (dead && !(own && unit_is_hero(u) && !(unit_flags(u) & UF_ILLUSION)))
+        return 1;
+    if (!dead) {
+        /* what GroupEnumUnitsInRect leaves out: hidden ([u+0x20] & 1; a worker in a mine is), in a transport
+         * (UF_LOADED), and a locust ([u+0x20] bit 2 clear: 0x064c on uloc against 0x...e on every other unit
+         * surveyed, 25 kinds; the flag word cannot tell a locust from a gryphon, both are 0x20001001). A wisp in
+         * an entangled mine also has bit 2 clear, but is loaded (0x191405 / 0x1018); a locust is not. The
+         * observer's own hidden or loaded units (in a mine, a Burrow, a building under construction, a transport)
+         * are kept, flagged BU_INSIDE (the JSON observation's `inside`). */
+        DWORD f20 = *(DWORD *)(u + 0x20);
+        int loaded = (unit_flags(u) & UF_LOADED) != 0;
+        if (!(f20 & 2) && !loaded)
             return 1;
-        BinUnit r = {obs_id(u), *(DWORD *)(u + 0x34), owner, bits_to_f(unit_xy_bits(u, 0)),
-                     bits_to_f(unit_xy_bits(u, 4)), 0, bits_to_f(unit_state_bits(u, 1)), 0,
-                     bits_to_f(unit_state_bits(u, 3))};
-        r.flags = BU_OWN | BU_HERO | BU_DEAD;
-        r.level = unit_hero_level(u);
-        r.order_target = 0xffffffff;
-        obs_hero(o, r.unit_id, handle, 1);
-        obs_inventory(o, u, r.unit_id);
-        bb_push(&o->t[T_UNITS], &r, sizeof r);
-        return 1;
+        inside = (f20 & 1) || loaded;
+        if (inside ? !own : !unit_visible(u, o->slot))
+            return 1;
     }
-    /* what GroupEnumUnitsInRect leaves out: hidden ([u+0x20] & 1; a worker in a mine is), in a transport (UF_LOADED),
-     * and a locust ([u+0x20] bit 2 clear: 0x064c on uloc against 0x...e on every other unit surveyed, 25 kinds;
-     * the flag word cannot tell a locust from a gryphon, both are 0x20001001). A wisp in an entangled mine
-     * also has bit 2 clear, but is loaded (0x191405 / 0x1018); a locust is not. The observer's own hidden or
-     * loaded units (in a mine, a Burrow, a building under construction, a transport) are kept, flagged
-     * BU_INSIDE (the JSON observation's `inside`). */
-    DWORD f20 = *(DWORD *)(u + 0x20);
-    int loaded = (unit_flags(u) & UF_LOADED) != 0;
-    if (!(f20 & 2) && !loaded)
-        return 1;
-    int inside = (f20 & 1) || loaded;
-    if (inside ? owner != o->player : !unit_visible(u, o->slot))
-        return 1;
-    int own = owner == o->player, handle = handle_of(u);
+    /* a handle for an existing unit creates no game object, so replays keep their object ids (design.md) */
+    int handle = handle_of(u);
     BinUnit r = {obs_id(u), *(DWORD *)(u + 0x34), owner, bits_to_f(unit_xy_bits(u, 0)), bits_to_f(unit_xy_bits(u, 4)),
-                 life, bits_to_f(unit_state_bits(u, 1)), bits_to_f(unit_state_bits(u, 2)),
+                 dead ? 0 : life, bits_to_f(unit_state_bits(u, 1)), dead ? 0 : bits_to_f(unit_state_bits(u, 2)),
                  bits_to_f(unit_state_bits(u, 3))};
     r.flags = (own ? BU_OWN : 0) | (unit_is_structure(u) ? BU_STRUCTURE : 0) | (unit_is_hero(u) ? BU_HERO : 0) |
-              (inside ? BU_INSIDE : 0) | (own && (unit_flags(u) & UF_ILLUSION) ? BU_ILLUSION : 0);
+              (inside ? BU_INSIDE : 0) | (own && (unit_flags(u) & UF_ILLUSION) ? BU_ILLUSION : 0) |
+              (dead ? BU_DEAD : 0);
     r.level = unit_hero_level(u);
     r.order_target = 0xffffffff;
-    gather_chain(o, u, &r, handle);
-    if (own) {
-        BYTE *ord = current_order(u);
+    if (!dead) {
+        gather_chain(o, u, &r, handle);
+        BYTE *ord = own ? current_order(u) : NULL;
         if (ord) {
             r.order_id = *(DWORD *)(ord + 0x24);
             r.order_target = *(DWORD *)(ord + 0x58);
             r.order_x = *(float *)(ord + 0x48);
             r.order_y = *(float *)(ord + 0x50);
         }
-    }
-    if (handle) {
-        obs_combat(&r, handle);
-        if (r.flags & BU_STRUCTURE)
+        if (handle)
+            obs_combat(&r, handle);
+        if (handle && (r.flags & BU_STRUCTURE))
             r.resource = NATIVE(RVA_N_RESOURCEAMOUNT, NativeI_I)(handle);
-        if (r.flags & BU_HERO)
-            obs_hero(o, r.unit_id, handle, own);
     }
+    if (handle && (r.flags & BU_HERO))
+        obs_hero(o, r.unit_id, handle, own);
     obs_inventory(o, u, r.unit_id);
     bb_push(&o->t[T_UNITS], &r, sizeof r);
     return 1;

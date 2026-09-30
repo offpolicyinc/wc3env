@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import secrets
 import threading
 import time
@@ -436,10 +437,15 @@ class GameSession:
 
     def save_replay(self, path: str | Path) -> Path:
         """Save the current episode's native Warcraft replay (.w3g). Call it once, when the episode is over:
-        recording stops, and debug staging is not part of a replay."""
+        recording stops, and debug staging is not part of a replay. A staged game's startup options (match
+        setup, AI difficulty, AI slots) go next to it (`<name>.w3g.json`), where launching the replay finds them."""
+        from .game import replay_startup_path
+
         target = Path(path).expanduser().absolute()
         target.parent.mkdir(parents=True, exist_ok=True)
         self.game.rpc.save_replay(str(target))
+        if self.game.startup:
+            replay_startup_path(target).write_text(json.dumps(self.game.startup), encoding="utf-8")
         return target
 
     def close(self) -> None:

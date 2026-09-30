@@ -53,12 +53,15 @@ The raw `reset` RPC remains an in-process reload without this host policy.
 `save_replay` runs the engine's own save: it closes the recorder and moves `Replay/TempReplay.w3g` to the
 path, as leaving a game does for `LastReplay.w3g`. Recording ends there, so save once, when the episode is
 over; a second call in the same episode, a replay playback or the fake server answer `bad_status`. A reset
-starts a new recording. `debug` staging is not recorded, so a replay of a staged episode will not match it.
+starts a new recording. `debug` staging is not recorded, so a replay of an episode staged with `debug` will not
+match it. `GameSession.save_replay` also writes the match setup, AI difficulty and AI slots the game started
+with to `<name>.w3g.json`; launching the replay applies them, so a `MatchSetup` or `ai_agents` episode replays.
 
 `.w3g` playback requires stepping, the installed map and the original agent-slot configuration.
 Steps stop at the recorded duration; final observations remain readable, with empty results
 if the recording ends without an outcome. `act` is rejected. Session reset relaunches the replay;
-raw RPC reset rejects it. Match-setup/AI overrides are rejected; debug state changes are not recorded.
+raw RPC reset rejects it. Match-setup/AI overrides are rejected (they come from `<name>.w3g.json`); debug state
+changes are not recorded.
 Unexpected simulation teardown returns `bad_status`, never wrapped elapsed time.
 
 Configuration: map must match the launch path or filename; slots must be unique integers 0-15

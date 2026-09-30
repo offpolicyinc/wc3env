@@ -5,12 +5,13 @@ from __future__ import annotations
 import csv
 import json
 import re
-from pathlib import Path
+
+from wc3env.data import DIR
 
 from .gamedata import RACES, order_ids, profiles, read_all, slk
 
-# Game facts kept by hand or by measurement sit with the generated data, under the agent.
-GAME_DATA = Path(__file__).resolve().parents[2] / "src/wc3env/data"
+# Game facts kept by hand or by measurement sit with the generated data, in the environment package.
+GAME_DATA = DIR
 
 
 # Abilities whose game files name no order: the Hippogryph's Pick up Archer and the Archer's Mount Hippogryph.

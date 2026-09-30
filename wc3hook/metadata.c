@@ -8,13 +8,12 @@
 #define N_PLAYER_ALLY 0x099510
 #define N_PLAYER_ENEMY 0x099580
 #define N_PLAYER_SCORE 0x094710
-#define N_WORLD_BOUNDS 0x097ef0
-#define N_RECT_MIN_X 0x095080
-#define N_RECT_MIN_Y 0x0950a0
-#define N_RECT_MAX_X 0x095040
-#define N_RECT_MAX_Y 0x095060
-#define N_REMOVE_RECT 0x0a51e0
 
+/* GetWorldBounds (0x97ef0) copies the world rectangle with 0x3036f0(float out[4], 0), then wraps it in a
+ * new rect handle. Only the copy is taken: creating and removing even one object reorders the engine's
+ * reused object ids, and a replay's recorded orders name units by those ids. */
+#define RVA_WORLD_BOUNDS_COPY 0x3036f0 /* out = {min y, min x, max y, max x} (checked against the native) */
+typedef void(__cdecl *BoundsCopyFn)(float *out, int zero);
 typedef int(__cdecl *N0)(void);
 typedef int(__cdecl *N3)(int, int, int);
 
@@ -26,13 +25,13 @@ void metadata_clear(void) {
 static void bounds_init(void) {
     if (g_bounds_ready)
         return;
-    int rect = NATIVE(N_WORLD_BOUNDS, N0)();
-    g_bounds[0] = bits_to_f(NATIVE(N_RECT_MIN_X, NativeI_I)(rect));
-    g_bounds[1] = bits_to_f(NATIVE(N_RECT_MIN_Y, NativeI_I)(rect));
-    g_bounds[2] = bits_to_f(NATIVE(N_RECT_MAX_X, NativeI_I)(rect));
-    g_bounds[3] = bits_to_f(NATIVE(N_RECT_MAX_Y, NativeI_I)(rect));
-    NATIVE(N_REMOVE_RECT, NativeI_I)(rect);
-    g_bounds_ready = 1; /* retain only numbers; the temporary rect is released */
+    float r[4];
+    NATIVE(RVA_WORLD_BOUNDS_COPY, BoundsCopyFn)(r, 0);
+    g_bounds[0] = r[1];
+    g_bounds[1] = r[0];
+    g_bounds[2] = r[3];
+    g_bounds[3] = r[2];
+    g_bounds_ready = 1;
 }
 
 static const char *SCORES[] = {"units_trained",

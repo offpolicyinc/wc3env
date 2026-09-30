@@ -201,6 +201,10 @@ BYTE *unit_by_rpc_id(long long id) {
     return find_class(id, UNIT_CLASS);
 }
 static unsigned order_id(const char *name) {
+    if (name[0] >= '0' && name[0] <= '9') { /* an order id: the engine's are 851970 and up, below type ids */
+        unsigned long id = strtoul(name, NULL, 10);
+        return id >= 851970 && id < 0x1000000 ? (unsigned)id : 0;
+    }
     for (size_t i = 0; i < sizeof ORDER_NAMES / sizeof ORDER_NAMES[0]; i++)
         if (_stricmp(ORDER_NAMES[i].name, name) == 0)
             return ORDER_NAMES[i].id;

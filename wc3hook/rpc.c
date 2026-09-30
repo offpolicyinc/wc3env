@@ -677,6 +677,8 @@ static void m_act(JW *w, LONGLONG id, yyjson_val *params) {
         if (!strcmp(it->command, "learn"))
             jr_str(yyjson_obj_get(args, "ability_id"), it->type_id, sizeof it->type_id);
         jr_str(yyjson_obj_get(args, "order"), it->order, sizeof it->order);
+        if (jr_is_int(yyjson_obj_get(args, "order"), &t)) /* an order id instead of its name */
+            _snprintf(it->order, sizeof it->order, "%lld", t);
         if ((it->has_xy && (fabs(it->x) > 1000000 || fabs(it->y) > 1000000)) ||
             (yyjson_obj_get(args, "target_id") != NULL &&
              (!jr_is_int(yyjson_obj_get(args, "target_id"), &t) || t <= 0 || t > 0xffffffffLL)) ||
@@ -688,7 +690,8 @@ static void m_act(JW *w, LONGLONG id, yyjson_val *params) {
         for (int q = 0; q < 4; q++) {
             yyjson_val *token = yyjson_obj_get(args, fields[q]);
             char value[32];
-            if (token != NULL && (!jr_str(token, value, sizeof value) || (q < 3 && strlen(value) != 4)))
+            if (token != NULL && !(q == 3 && jr_is_int(token, &t)) &&
+                (!jr_str(token, value, sizeof value) || (q < 3 && strlen(value) != 4)))
                 it->reason = RJ_BAD_ARGS;
         }
         static const char *KNOWN[] = {"move",     "stop",  "attack", "smart",    "harvest",   "build",  "train",

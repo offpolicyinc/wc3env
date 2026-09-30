@@ -7,7 +7,7 @@ from pathlib import Path
 
 class MapInfo:
     def __init__(self, data):
-        if data.get("schema_version") != 1:
+        if data.get("schema_version") not in (1, 2):  # 2 adds bounds, pathing and trees
             raise ValueError("Unsupported map description; regenerate with tools.prepare map")
         self.name = data["map"]
         self.starts = data["start_locations"]

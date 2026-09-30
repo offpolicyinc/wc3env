@@ -92,16 +92,11 @@ static void ev_record(int id, BYTE *unit, BYTE *other, BYTE *item, DWORD argumen
  * recorded; JASS natives run inside the interpreter loop 0x4d75b0 (AI scripts, map triggers); anything else is
  * the engine's own (a worker returning its load, a unit acquiring a target, a held order). The innermost wins:
  * a trigger ordering a unit while a player's command is handled is the script's.
- *
- * Order objects: id +0x24, point +0x48 and +0x50, target object id +0x58 (0xffffffff: none). Immediate orders
- * have their own class, whose other fields are not a point or target; giving or dropping an item has its own,
- * with the item's object id at +0x88 (recorded as its type, as inventories list items). */
+ */
 #define RVA_PLAYER_ORDER 0x2c9360
 #define RVA_PLAYER_ORDER_END 0x2c95a0
 #define RVA_JASS_RUN 0x4d75b0
 #define RVA_JASS_RUN_END 0x4d84a0
-#define RVA_IMMEDIATE_ORDER_VTABLE 0xa9c6f0
-#define RVA_ITEM_ORDER_VTABLE 0xa9d4a0
 static DWORD order_origin(void) {
     NT_TIB *tib = (NT_TIB *)NtCurrentTeb();
     DWORD *fp;

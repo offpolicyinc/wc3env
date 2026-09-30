@@ -444,7 +444,9 @@ static int __cdecl obs_unit_cb(BYTE *u, void *ctx) {
         if (!(f20 & 2) && !loaded)
             return 1;
         inside = (f20 & 1) || loaded;
-        if (inside ? !own : !unit_visible(u, o->slot))
+        /* the observer always knows its own units: the engine reports some as not visible even to their owner
+         * for a moment (teleporting, blinking), while the other player still sees them */
+        if (inside ? !own : !own && !unit_visible(u, o->slot))
             return 1;
     }
     /* a handle for an existing unit creates no game object, so replays keep their object ids (design.md) */
@@ -462,9 +464,11 @@ static int __cdecl obs_unit_cb(BYTE *u, void *ctx) {
         BYTE *ord = own ? current_order(u) : NULL;
         if (ord) {
             r.order_id = *(DWORD *)(ord + 0x24);
-            r.order_target = *(DWORD *)(ord + 0x58);
-            r.order_x = *(float *)(ord + 0x48);
-            r.order_y = *(float *)(ord + 0x50);
+            if (*(DWORD *)ord - (DWORD)g_base != RVA_IMMEDIATE_ORDER_VTABLE) { /* an immediate order has neither */
+                r.order_target = *(DWORD *)(ord + 0x58);
+                r.order_x = *(float *)(ord + 0x48);
+                r.order_y = *(float *)(ord + 0x50);
+            }
         }
         if (handle)
             obs_combat(&r, handle);

@@ -252,6 +252,10 @@ void setup_write(JW *w);
 /* ---- events.c --------------------------------------------------------------------------------- */
 unsigned events_gather(BB *out, int player); /* BinEvent records; returns the number lost to ring overflow */
 void events_json(JW *w, const BinEvent *events, size_t n);
+/* Order objects: id +0x24, point +0x48/+0x50, target object id +0x58. Immediate orders have their own class
+ * whose other fields are not a point or target; giving or dropping an item has its own, the item at +0x88. */
+#define RVA_IMMEDIATE_ORDER_VTABLE 0xa9c6f0
+#define RVA_ITEM_ORDER_VTABLE 0xa9d4a0
 unsigned orders_gather(BB *out, int player); /* BinOrder records; returns the number lost to ring overflow */
 void events_set_players(unsigned mask);  /* create_game: the players events are judged for; empties the log */
 void events_init_hooks(void);

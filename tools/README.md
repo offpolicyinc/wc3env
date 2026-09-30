@@ -25,7 +25,7 @@ cmake -S tools/StormLib -B tools/StormLib/build -G "Visual Studio 17 2022" -A x6
 cmake --build tools/StormLib/build --config Release
 
 python -m tools.prepare reference                 # src/wc3env/data/reference.json
-python -m tools.prepare map                       # src/wc3env/data/maps/<map>.json: starts, mines, creep camps, shops
+python -m tools.prepare map --map <path>          # src/wc3env/data/maps/<map>.json: bounds, starts, mines, camps, shops, pathing, trees
 python -m tools.scripts.measure_item_targets      # src/wc3env/data/item_targets.json, measured in a running game
 ```
 

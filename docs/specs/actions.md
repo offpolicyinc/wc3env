@@ -26,7 +26,7 @@ the submitted snapshot.
 | `build` | `type_id` and `x, y` or `target_id`; optional `auto_place: bool` | Build at/on the target, or search near a point |
 | `train`, `research` | `type_id` | Train unit/hero or research upgrade |
 | `learn` | `ability_id` | Learn hero skill |
-| `cast` | `order`, optionally `x, y` or `target_id` | Cast by order string |
+| `cast` | `order` (its name, or its numeric id), optionally `x, y` or `target_id` | Cast by order |
 | `use_item` | `slot`, optionally `x, y` or `target_id` | Use inventory slot 0-5 |
 | `drop_item` | `slot`, optionally `target_id` or `x, y` | The unit walks over and gives the item to the target unit (a shop buys it for half its price) or drops it at the point; no target drops it at its feet. Sent as a player's drag of the item (the replay's `0x13` record) |
 | `select` | | Select unit |

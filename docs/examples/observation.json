@@ -108,7 +108,7 @@
  },
  "units": [
   {
-   "unit_id": 15648,
+   "unit_id": 15647,
    "type_id": "Hamg",
    "owner": 0,
    "x": 5172.0,
@@ -120,10 +120,55 @@
    "structure": false,
    "hero": true,
    "level": 1,
-   "order": null
+   "buffs": [],
+   "order": null,
+   "abilities": [
+    {
+     "ability_id": "AItp",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "AIh1",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 20.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "AInv",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "AHer",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Aatk",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amov",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    }
+   ]
   },
   {
-   "unit_id": 15686,
+   "unit_id": 15684,
    "type_id": "hfoo",
    "owner": 0,
    "x": 5168.0,
@@ -135,7 +180,38 @@
    "structure": false,
    "hero": false,
    "level": 0,
-   "order": null
+   "buffs": [],
+   "order": null,
+   "abilities": [
+    {
+     "ability_id": "AInv",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Adef",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Aatk",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amov",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    }
+   ]
   },
   {
    "unit_id": 12309,
@@ -150,7 +226,38 @@
    "structure": false,
    "hero": false,
    "level": 0,
-   "order": null
+   "buffs": [],
+   "order": null,
+   "abilities": [
+    {
+     "ability_id": "AInv",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Adef",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Aatk",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amov",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    }
+   ]
   },
   {
    "unit_id": 15507,
@@ -165,7 +272,52 @@
    "structure": false,
    "hero": false,
    "level": 0,
-   "order": null
+   "buffs": [],
+   "order": null,
+   "abilities": [
+    {
+     "ability_id": "Ahrp",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amil",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Ahar",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Aatk",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amov",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "AHbu",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    }
+   ]
   },
   {
    "unit_id": 15485,
@@ -180,7 +332,52 @@
    "structure": false,
    "hero": false,
    "level": 0,
-   "order": null
+   "buffs": [],
+   "order": null,
+   "abilities": [
+    {
+     "ability_id": "Ahrp",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amil",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Ahar",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Aatk",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amov",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "AHbu",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    }
+   ]
   },
   {
    "unit_id": 15463,
@@ -195,7 +392,52 @@
    "structure": false,
    "hero": false,
    "level": 0,
-   "order": null
+   "buffs": [],
+   "order": null,
+   "abilities": [
+    {
+     "ability_id": "Ahrp",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amil",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Ahar",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Aatk",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amov",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "AHbu",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    }
+   ]
   },
   {
    "unit_id": 15441,
@@ -210,7 +452,52 @@
    "structure": false,
    "hero": false,
    "level": 0,
-   "order": null
+   "buffs": [],
+   "order": null,
+   "abilities": [
+    {
+     "ability_id": "Ahrp",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amil",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Ahar",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Aatk",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amov",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "AHbu",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    }
+   ]
   },
   {
    "unit_id": 15419,
@@ -225,7 +512,52 @@
    "structure": false,
    "hero": false,
    "level": 0,
-   "order": null
+   "buffs": [],
+   "order": null,
+   "abilities": [
+    {
+     "ability_id": "Ahrp",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amil",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Ahar",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Aatk",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Amov",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "AHbu",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    }
+   ]
   },
   {
    "unit_id": 15388,
@@ -240,13 +572,66 @@
    "structure": true,
    "hero": false,
    "level": 0,
+   "buffs": [],
    "order": null,
    "state": null,
    "state_seconds": 0.0,
    "queue": [],
-   "queue_seconds": 0.0
+   "queue_seconds": 0.0,
+   "abilities": [
+    {
+     "ability_id": "Amic",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Aalr",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Afih",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "ARal",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Argl",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Aupg",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    },
+    {
+     "ability_id": "Aque",
+     "level": 1,
+     "mana_cost": 0,
+     "cooldown_seconds": 0.0,
+     "cooldown_remaining": 0.0
+    }
+   ]
   }
  ],
+ "inside": [],
  "visible_enemies": [
   {
    "unit_id": 12339,
@@ -260,12 +645,13 @@
    "max_mana": 0,
    "structure": true,
    "hero": false,
-   "level": 0
+   "level": 0,
+   "buffs": []
   }
  ],
  "items": [
   {
-   "item_id": 15140,
+   "item_id": 15381,
    "type_id": "stwp",
    "x": 4972.0,
    "y": 3244.0
@@ -273,13 +659,13 @@
  ],
  "inventory": [
   {
-   "unit_id": 15648,
+   "unit_id": 15647,
    "slot": 0,
    "type_id": "phea",
    "charges": 1
   },
   {
-   "unit_id": 15648,
+   "unit_id": 15647,
    "slot": 1,
    "type_id": "stwp",
    "charges": 1
@@ -288,24 +674,38 @@
  "events": [
   {
    "kind": "item_pickup",
-   "unit_id": 15648,
-   "item_id": 15483,
+   "unit_id": 15647,
+   "item_id": 15506,
    "type_id": "phea"
   },
   {
    "kind": "item_pickup",
-   "unit_id": 15648,
-   "item_id": 15416,
+   "unit_id": 15647,
+   "item_id": 15440,
    "type_id": "stwp"
   },
   {
    "kind": "death",
-   "unit_id": 15766,
+   "unit_id": 15765,
    "type_id": "hfoo",
    "owner": 0
   }
  ],
  "events_lost": 0,
+ "orders": [
+  {
+   "unit_id": 15765,
+   "name": "undefend",
+   "target_id": null,
+   "x": null,
+   "y": null,
+   "origin": "engine",
+   "queued": false,
+   "game_time_seconds": 2.0
+  }
+ ],
+ "orders_lost": 0,
+ "chat": [],
  "destructables": [
   {
    "id": 11611,

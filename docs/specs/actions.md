@@ -28,7 +28,7 @@ the submitted snapshot.
 | `learn` | `ability_id` | Learn hero skill |
 | `cast` | `order`, optionally `x, y` or `target_id` | Cast by order string |
 | `use_item` | `slot`, optionally `x, y` or `target_id` | Use inventory slot 0-5 |
-| `drop_item` | `slot`, optionally `target_id` or `x, y` | The unit walks over and gives the item to the target unit (a shop buys it for half its price) or drops it at the point; no target drops it at its feet. Issued through the natives UnitDropItemTarget/UnitDropItemPoint, so it is not in the saved replay |
+| `drop_item` | `slot`, optionally `target_id` or `x, y` | The unit walks over and gives the item to the target unit (a shop buys it for half its price) or drops it at the point; no target drops it at its feet. Sent as a player's drag of the item (the replay's `0x13` record) |
 | `select` | | Select unit |
 | `buy` | `shop_id, item_type_id` | Buy for `unit_id`; selects buyer/shop automatically |
 | `revive` | `target_id` | An altar revives its own dead hero; the hero's `unit_id` comes from its `death` event |

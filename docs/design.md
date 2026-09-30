@@ -130,6 +130,16 @@ history: hidden activity affects neither retention nor loss counts. Never infer 
 disappearance. Agents select resources from visible destructables and type IDs, without a
 first-base or nearest-tree shortcut.
 
+Orders come from two places. A player's command (network, replay or `act`) gives each unit its
+order through `0x2c9360`, whatever the engine then does with it (issue, Shift-queue, issue later,
+refuse): its detour records the command as given (origin `player`). The unit-side functions that
+fire the issued-order events (`0x28b8b0`, `0x28be70`, `0x28d270`) see every order a unit actually
+gets; the call chain (the exe keeps frame pointers) says where it came from: inside `0x2c9360`, the
+command already recorded; inside the JASS interpreter (`0x4d75b0`), a script; else the engine
+itself. A unit's orders are its owner's only. Playing a ladder replay, 97-99% of its order actions
+come back as player commands within a turn; the rest reached units that had just died or were
+refused, so a replay whose commands stop reaching units has lost sync (`tools/check_replays.py`).
+
 Player categories, alliances and own scores come from runtime natives. Resource labels use
 loaded object data, including custom tree types. World bounds cache four numbers per episode,
 copied by the routine `GetWorldBounds` uses (`0x3036f0`), without its rectangle. See [metadata](specs/observations.md#observation-metadata).

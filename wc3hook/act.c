@@ -40,7 +40,7 @@ static QueueActionFn QueueAction_orig;
 /* Grow each player's buffer as needed. Game thread only. */
 #define ACT_RECORDS 10
 typedef struct {
-    BYTE bytes[32], length;
+    BYTE bytes[48], length; /* the longest W3G record, 0x14, is 44 bytes */
 } ActRecord;
 typedef struct {
     ActRecord *records;
@@ -79,6 +79,8 @@ static int act_reserve(ActQueue *q) {
 }
 
 static void act_enqueue(const BYTE *bytes, int n) { /* the caller reserves room for the whole order */
+    if (n > (int)sizeof ((ActRecord *)0)->bytes)
+        abort(); /* a record that does not fit would be sent corrupted */
     ActQueue *q = &g_act[g_encoding_player];
     ActRecord *record = &q->records[q->count++];
     memcpy(record->bytes, bytes, n);
@@ -162,6 +164,7 @@ void act_init_hooks(void) {
 #define O_HARVEST 851970u
 #define O_USE_SLOT0 852008u
 #define O_REVIVE 852039u
+#define O_DROP_ITEM 852001u
 /* Enumerate until the requested ID is found; no fixed-size snapshot or stale pointers. */
 typedef struct {
     long long id;
@@ -306,22 +309,20 @@ static void rec_use_item(int slot, BYTE *item, unsigned flags) {
     act_enqueue(b, k);
 }
 
-/* Give or drop an item through the natives UnitDropItemTarget (0xaf130: a unit takes it, a shop buys it)
- * and UnitDropItemPoint (0xaf050: onto the ground), found by their registration in the executable. The
- * unit walks there first, as for a player's drag. The W3G record for it (0x13) was sent as documented and
- * the game ignored it; the natives change the game directly, so a drop is not in the saved replay, like
- * debug staging. Game thread. */
-#define RVA_N_DROP_ITEM_TARGET 0x0af130 /* UnitDropItemTarget (Hunit;Hitem;Hwidget;)B */
-#define RVA_N_DROP_ITEM_POINT 0x0af050  /* UnitDropItemPoint (Hunit;Hitem;RR)B */
-typedef int(__cdecl *DropFn)(int, int, int);
-typedef int(__cdecl *DropAtFn)(int, int, const float *, const float *);
-static int drop_item(BYTE *unit, BYTE *item, float x, float y, BYTE *target) {
-    int uh = handle_of(unit), ih = handle_of(item);
-    if (!uh || !ih)
-        return 0;
-    if (target)
-        return NATIVE(RVA_N_DROP_ITEM_TARGET, DropFn)(uh, ih, handle_of(target));
-    return NATIVE(RVA_N_DROP_ITEM_POINT, DropAtFn)(uh, ih, &x, &y);
+/* Give or drop an item: a player's drag of an item onto a unit (a shop buys it) or the ground, the record
+ * ladder replays carry: 13 flags 0x44 dropitem ff*8 x y (target or ff*8) item. The unit walks there first. */
+static void rec_drop_item(BYTE *item, unsigned flags, float x, float y, BYTE *target) {
+    BYTE b[40];
+    int k = 0;
+    b[k++] = 0x13;
+    k = put_u16(b, k, 0x44 | flags);
+    k = put_u32(b, k, O_DROP_ITEM);
+    k = put_none(b, k);
+    k = put_f32(b, k, x);
+    k = put_f32(b, k, y);
+    k = target ? put_pair(b, k, target) : put_none(b, k);
+    k = put_pair(b, k, item);
+    act_enqueue(b, k);
 }
 
 #define MAX_PENDING 256
@@ -511,8 +512,8 @@ void act_apply(ActJob *job) {
                 tx = bits_to_f(unit_xy_bits(u, 0));
                 ty = bits_to_f(unit_xy_bits(u, 4));
             }
-            if (!drop_item(u, it, tx, ty, t))
-                a->reason = RJ_BAD_ARGS;
+            select_unit(u);
+            rec_drop_item(it, flags, tx, ty, t);
         } else if (revive) {
             /* The altar's target order on its own dead hero. Warcraft refuses it until the death
              * has resolved (about 20 seconds) and when the player cannot pay. */

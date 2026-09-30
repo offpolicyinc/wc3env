@@ -55,6 +55,8 @@ order `cancel` removes a structure's last queued item or stops its construction 
 | `destructables` | Visible living objects: `{id, type_id, x, y, hp, resource, invulnerable}`; `resource` is `lumber` or null, without guaranteeing harvestability |
 | `events` | Visible/owned events since this player's previous observation |
 | `events_lost` | Visible events overwritten since this observer last read |
+| `orders` | Every order given to the observer's units since its previous observation, oldest first: `{unit_id, name, target_id, x, y, origin, queued, game_time_seconds}`, plus `item_type_id` for giving or dropping an item; `name` as in a unit's `order`; `target_id` for a target order, `x, y` for a point order, else null. `origin` is who gave it: `player` (a player's command: the network, a replay or `act`), `script` (JASS: AI scripts and map triggers) or `engine` (on its own: a worker returning its load, a unit acquiring a target) |
+| `orders_lost` | Orders overwritten since this observer last read (each player keeps the latest 2048) |
 | `chat` | Lines the person at the game window typed into the chat box since the previous observation (Enter, text, Enter); only in the local player's observation and only in a visible background window; printable ASCII |
 | `result` | Empty string, `victory`, `defeat` or `draw`; replay EOF can end a session without results |
 
@@ -80,6 +82,7 @@ to player IDs. Slot IDs alone do not establish neutrality, hostility or alliance
 | `item_pickup` | `unit_id, item_id, type_id` |
 | `item_use` | `unit_id, type_id` |
 | `item_sold` | `unit_id` of shop, `buyer_id, type_id` |
+| `unit_sold` | `unit_id` of shop, `buyer_id, type_id` of the hired mercenary or tavern hero |
 | `attacked` | `unit_id` of victim, `attacker_id` |
 
 The host wrapper adds `ticks_skipped`: `max(0, int(elapsed_seconds) - 1)` in realtime, else 0.
@@ -98,7 +101,7 @@ step. Computer players are not observed; `session.game.rpc.observe_binary(slot)`
 | Attribute | Contents |
 |---|---|
 | `player`, `sequence`, `game_time_seconds` | As in JSON; `sequence` is shared with JSON observations |
-| `gold`, `lumber`, `food_used`, `food_cap`, `result`, `events_lost`, `score` | As in JSON |
+| `gold`, `lumber`, `food_used`, `food_cap`, `result`, `events_lost`, `orders_lost`, `score` | As in JSON |
 | `time_of_day` | 0 to 24; day lasts from 6 to 18. Melee games start at 8 |
 | `units` | Every own unit, including those inside a mine, building or transport (flag `INSIDE`), and every other visible unit: `unit_id, type_id, owner, x, y, hp, max_hp, mana, max_mana, flags, level, order_id, order_target, order_x, order_y, state, state_seconds, queue_seconds, armor, damage_min, damage_max, attack_period, move_speed, facing, resource`. `flags` combines `OWN`, `STRUCTURE`, `HERO`, `INSIDE`, `ILLUSION` (own illusions only: a player cannot tell enemy ones apart, so an illusion of a hero is a `HERO` like the real one) and `DEAD` (the observer's dead heroes, listed for revival with position, level, hero stats and items; every other row is alive). Order and production fields are set for own units only; `order_target` is `0xffffffff` for a point order; `state` indexes `STATES`. The combat numbers are what the unit's info panel shows, after upgrades, items, auras and attributes: armor, the first weapon's damage range and seconds per attack (0 without an attack), move speed and facing in degrees. `resource` is the gold left in a mine |
 | `abilities` | Own units' learned abilities: `unit_id, ability_id, level, mana_cost, cooldown_seconds, cooldown_remaining` |
@@ -110,6 +113,7 @@ step. Computer players are not observed; `session.game.rpc.observe_binary(slot)`
 | `items` | Visible ground items: `item_id, type_id, x, y` |
 | `destructables` | Visible living destructables: `id, type_id, x, y, hp, flags` (`LUMBER`, `INVULNERABLE`) |
 | `events` | `kind` (engine event id; `EVENT_KINDS` names it), `unit_id`, `other_id`, `type_id`, `value`. `unit_id`, `other_id` and `type_id` are the JSON event's fields in order (`other_id` is `trained_id`, `summoned_id`, `item_id`, `buyer_id` or `attacker_id`; `type_id` is also an `ability_id`); `value` is a death's owner or a hero level |
+| `orders` | `unit_id, order_id, kind, target_id, item_type, x, y, origin, queued, time_ms`: `item_type` is the type of the item a give or drop moves (0 otherwise); `kind` is `IMMEDIATE`, `POINT` or `TARGET`; `target_id` is `0xffffffff` and `x, y` are 0 where the kind has none; `origin` indexes `ORIGINS` (`engine`, `player`, `script`) |
 
 Ids are integers; `fourcc()` turns a type, ability, buff or build-order id into its four characters.
 Order ids are the engine's (a build order's id is the structure's type id). `players`, `map` and `chat`

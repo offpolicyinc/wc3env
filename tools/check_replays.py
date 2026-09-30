@@ -2,20 +2,26 @@
 
     python tools/check_replays.py runs/replays/1.29 --out runs/replays/1.29/check.jsonl --workers 6
 
-A replay stores only inputs, and its commands name units by the engine's object ids, so a playback that
-drifts from the recorded game shows up as players selecting units that do not exist. Each game second the
-replay's selections are checked against the units both players can see (a unit that died within that
-second counts as present). Per replay, one JSON line: status `ok` (with the miss rate, the worst minute's
-rate and the final results), `map_missing`, `no_load` (never leaves the start hold: recorded on another
-patch or map version) or `error`. In sync, misses stay around 1%: units dying between checks.
+A replay stores only inputs, and its commands name units by the engine's object ids. In sync, every order a
+player gave reaches their units: the observation's orders show each player command (origin `player`) at the
+game time the replay gives it (its clock less any paused time). A playback that drifts from the recorded game
+shows up as order actions that reach no unit. Each minute's order actions are matched to the commands the
+playback gave (same player and order, within a turn). The playback ends when the first player leaves; later
+commands are not checked. Per replay, one JSON line: status `ok` with the miss rate, the worst minute's rate,
+`synced_seconds` (the start of the first minute with 20 or more order actions of which more than a quarter
+reached nothing; the whole game when there is none) and the final results; `map_missing`; `no_load` (never
+leaves the start hold: recorded on another patch or map version); or `error`. In sync, 1-2% miss: commands
+to units the player does not own, units that just died, or orders the game refused.
 """
 
 from __future__ import annotations
 
 import argparse
+import bisect
 import contextlib
 import io
 import json
+import struct
 import time
 import traceback
 from collections import defaultdict
@@ -25,9 +31,12 @@ from pathlib import Path
 from wc3env import w3g
 from wc3env.settings import settings
 
+MATCH_MS = (-500, 1000)  # a turn's actions carry its end time and run during it; the capture lags a little
+DESYNC = 0.25
+
 
 def check(path: str) -> dict:
-    from wc3env.binary import SharedObservations
+    from wc3env.binary import ORIGINS, SharedObservations
     from wc3env.game import launch
 
     replay = w3g.read(path)
@@ -36,11 +45,12 @@ def check(path: str) -> dict:
     row = {"id": Path(path).stem, "map": replay.map, "seconds": replay.duration_ms // 1000, "slots": slots}
     if not (settings().game_dir / replay.map.replace("\\", "/")).is_file():
         return {**row, "status": "map_missing"}
-    slot_of = {p.id: p.slot for p in players}  # observers may select anything they watch
-    selected = defaultdict(set)  # second -> object ids
-    for t, pid, ids in replay.selections():
-        if pid in slot_of:
-            selected[t // 1000].update(ids)
+    slot_of = {p.id: p.slot for p in players}  # observers' actions reach no unit
+    wanted = [  # at game time: the replay's clock also counts paused time
+        (slot_of[pid], replay.game_ms(t), struct.unpack_from("<I", body, 2)[0])
+        for t, pid, a, body in replay.actions()
+        if pid in slot_of and 0x10 <= a <= 0x14
+    ]
     started, game = time.monotonic(), None
     try:
         with contextlib.redirect_stdout(io.StringIO()):
@@ -54,35 +64,40 @@ def check(path: str) -> dict:
         rpc.timeout = 120
         rpc.debug("speed", factor=1024)
         rpc.debug("waitfloor", ms=1)
-        shared, before, second, results = None, set(), 0, {}
-        minutes = defaultdict(lambda: [0, 0])  # minute -> [missing, selected]
+        shared, seconds, results = None, 0, {}
+        given = defaultdict(set)  # (slot, order id) -> game times of the player's commands
         while True:
             try:
                 step = rpc.step(1000, observe=list(slots))
             except Exception:
                 break  # the recording ended with the simulation
             shared = shared or SharedObservations(game.pid)
-            units = set()
             for o in step["observations"]:
                 observation = shared.read(o["offset"], o["size"])
-                units.update(observation.units["unit_id"].tolist())
+                for r in observation.orders[observation.orders["origin"] == ORIGINS.index("player")]:
+                    given[(observation.player, int(r["order_id"]))].add(int(r["time_ms"]))
                 if observation.result:
                     results[observation.player] = observation.result
-            ids = selected.get(second, set())
-            minutes[second // 60][0] += sum(1 for i in ids if i not in units and i not in before)
-            minutes[second // 60][1] += len(ids)
-            before, second = units, second + 1
+            seconds += 1
             if step["reason"] != "target":
                 break
+        times = {key: sorted(v) for key, v in given.items()}
+        minutes = defaultdict(lambda: [0, 0])  # minute -> [missing, order actions]
+        for slot, t, order in (w for w in wanted if w[1] < 1000 * seconds):  # the rest were never played
+            ts = times.get((slot, order), [])
+            i = bisect.bisect_left(ts, t + MATCH_MS[0])
+            minutes[t // 60000][0] += not (i < len(ts) and ts[i] <= t + MATCH_MS[1])
+            minutes[t // 60000][1] += 1
         missing, total = (sum(m[i] for m in minutes.values()) for i in (0, 1))
-        worst = max((m / n for m, n in minutes.values() if n >= 20), default=0.0)
+        lost = [m for m, (miss, n) in sorted(minutes.items()) if n >= 20 and miss / n > DESYNC]
         return {
             **row,
             "status": "ok",
-            "played_seconds": second,
-            "selected": total,
+            "played_seconds": seconds,
+            "order_actions": total,
             "miss_rate": round(missing / max(total, 1), 4),
-            "worst_minute_rate": round(worst, 3),
+            "worst_minute_rate": round(max((m / n for m, n in minutes.values() if n >= 20), default=0.0), 3),
+            "synced_seconds": min(60 * lost[0], seconds) if lost else seconds,
             "result": results,
             "wall_seconds": round(time.monotonic() - started, 1),
         }

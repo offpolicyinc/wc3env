@@ -11,6 +11,9 @@
  * bounded logs keep hidden activity out of both retention and loss counts. `observe(p)` consumes only that
  * player's events. Written as JSON objects (docs/specs/observations.md): object ids as integers, type ids as
  * four-character strings.
+ *
+ * Orders: every order a player's command gives a unit, and every order a script or the engine itself gives one.
+ * See order_record.
  */
 #include "wc3hook.h"
 
@@ -26,10 +29,17 @@ static unsigned g_ev_head[16]; /* visible events ever logged for each player */
 static unsigned g_cursor[16];  /* per player: the first event it has not been given yet */
 static unsigned g_players;     /* bit p: player p is in the game (create_game), so events are judged for it */
 
+/* Per-owner order rings, the same way: a unit's orders are its owner's alone. */
+#define ORD_CAP 2048
+static BinOrder g_ord[16][ORD_CAP];
+static unsigned g_ord_head[16], g_ord_cursor[16];
+
 void events_set_players(unsigned mask) {
     g_players = mask;
     memset(g_ev_head, 0, sizeof g_ev_head);
     memset(g_cursor, 0, sizeof g_cursor);
+    memset(g_ord_head, 0, sizeof g_ord_head);
+    memset(g_ord_cursor, 0, sizeof g_ord_cursor);
 }
 
 static int owner_id(BYTE *unit) {
@@ -68,8 +78,88 @@ static void ev_record(int id, BYTE *unit, BYTE *other, BYTE *item, DWORD argumen
             g_ev[p][g_ev_head[p]++ % EV_CAP] = e;
 }
 
+/* Orders come from two places.
+ *
+ * A player's command: every order action (the network, a replay, act) gives each unit its order through
+ * 0x2c9360 (cdecl: the unit, the command's order object, the command's W3G flags, a fourth value; its only
+ * callers are the six order-action handlers). It runs whether the engine then issues the order at once, queues
+ * it (Shift), issues it later from its own update (a ladder replay's worker right-clicks often go that way) or
+ * refuses it (no mana), so its detour records what the player commanded.
+ *
+ * Everything else: the unit-side functions that fire EVENT_PLAYER_UNIT_ISSUED_* (thiscall: the unit, the
+ * order object; ret 4) see every order a unit is actually given. Where it came from is read from the call
+ * chain (the exe keeps frame pointers): orders issued inside 0x2c9360 are the player's command, already
+ * recorded; JASS natives run inside the interpreter loop 0x4d75b0 (AI scripts, map triggers); anything else is
+ * the engine's own (a worker returning its load, a unit acquiring a target, a held order). The innermost wins:
+ * a trigger ordering a unit while a player's command is handled is the script's.
+ *
+ * Order objects: id +0x24, point +0x48 and +0x50, target object id +0x58 (0xffffffff: none). Immediate orders
+ * have their own class, whose other fields are not a point or target; giving or dropping an item has its own,
+ * with the item's object id at +0x88 (recorded as its type, as inventories list items). */
+#define RVA_PLAYER_ORDER 0x2c9360
+#define RVA_PLAYER_ORDER_END 0x2c95a0
+#define RVA_JASS_RUN 0x4d75b0
+#define RVA_JASS_RUN_END 0x4d84a0
+#define RVA_IMMEDIATE_ORDER_VTABLE 0xa9c6f0
+#define RVA_ITEM_ORDER_VTABLE 0xa9d4a0
+static DWORD order_origin(void) {
+    NT_TIB *tib = (NT_TIB *)NtCurrentTeb();
+    DWORD *fp;
+    __asm { mov fp, ebp }
+    while ((BYTE *)fp >= (BYTE *)tib->StackLimit && (BYTE *)(fp + 2) <= (BYTE *)tib->StackBase) {
+        DWORD rva = fp[1] - (DWORD)g_base;
+        if (rva >= RVA_PLAYER_ORDER && rva < RVA_PLAYER_ORDER_END)
+            return ORIGIN_PLAYER;
+        if (rva >= RVA_JASS_RUN && rva < RVA_JASS_RUN_END)
+            return ORIGIN_SCRIPT;
+        if ((DWORD *)fp[0] <= fp)
+            break;
+        fp = (DWORD *)fp[0];
+    }
+    return ORIGIN_ENGINE;
+}
+
+static void order_record(BYTE *unit, BYTE *order, DWORD kind, DWORD origin, DWORD queued) {
+    int owner = unit && order ? owner_id(unit) : -1;
+    if (owner < 0 || owner >= 16 || !(g_players >> owner & 1))
+        return;
+    BinOrder r = {obs_id(unit), *(DWORD *)(order + 0x24), kind, 0xffffffff};
+    if (kind != ORDER_IMMEDIATE) {
+        r.x = *(float *)(order + 0x48);
+        r.y = *(float *)(order + 0x50);
+    }
+    if (kind == ORDER_TARGET)
+        r.target_id = *(DWORD *)(order + 0x58);
+    if (*(DWORD *)order - (DWORD)g_base == RVA_ITEM_ORDER_VTABLE) {
+        BYTE *item = object_by_rpc_id(*(DWORD *)(order + 0x88));
+        r.item_type = item ? *(DWORD *)(item + 0x34) : 0;
+    }
+    r.origin = origin;
+    r.queued = queued;
+    r.time_ms = game_time();
+    g_ord[owner][g_ord_head[owner]++ % ORD_CAP] = r;
+}
+static void issued_record(BYTE *unit, BYTE *order, DWORD kind) {
+    DWORD origin = order_origin();
+    if (origin != ORIGIN_PLAYER)
+        order_record(unit, order, kind, origin, 0);
+}
+static int(__cdecl *PlayerOrder_orig)(BYTE *unit, BYTE *order, DWORD flags, DWORD fourth);
+static int __cdecl PlayerOrder_hook(BYTE *unit, BYTE *order, DWORD flags, DWORD fourth) {
+    __try {
+        DWORD target = order ? *(DWORD *)(order + 0x58) : 0;
+        DWORD kind = order && *(DWORD *)order - (DWORD)g_base == RVA_IMMEDIATE_ORDER_VTABLE ? ORDER_IMMEDIATE
+                     : target && target != 0xffffffff                                      ? ORDER_TARGET
+                                                                                           : ORDER_POINT;
+        order_record(unit, order, kind, ORIGIN_PLAYER, flags & 1); /* W3G order flag 1: Shift */
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+    }
+    return PlayerOrder_orig(unit, order, flags, fourth);
+}
+
 /* The kinds: name, fire function, its stack arguments a, b, c (thiscall: the callee pops them, so the count
- * must match its `ret`), and what is recorded from them. */
+ * must match its `ret`), and what is recorded from them. The issued-order functions are unit-side (this = the
+ * unit, a the order object): their player-unit fire functions are called only when a trigger is registered. */
 #define OBJ(x) ((BYTE *)(x))
 #define FIRE_KINDS(X1, X2, X3)                                                                                       \
     X1(ConstructStart, 0x0ba2b0, ev_record(26, OBJ(a), NULL, NULL, 0))                                             \
@@ -91,7 +181,11 @@ static void ev_record(int id, BYTE *unit, BYTE *other, BYTE *item, DWORD argumen
     X2(ItemPickup, 0x0baf50, ev_record(49, OBJ(a), NULL, OBJ(b), 0))                                               \
     X2(ItemUse, 0x0bcad0, ev_record(50, OBJ(a), NULL, OBJ(b), 0))                                                  \
     X3(HeroLearn, 0x0b9b90, ev_record(42, OBJ(a), NULL, NULL, b))        /* b the ability id */                   \
-    X3(ItemSold, 0x0bb960, ev_record(274, OBJ(a), OBJ(b), OBJ(c), 0))    /* a the shop, b the buyer */
+    X3(ItemSold, 0x0bb960, ev_record(274, OBJ(a), OBJ(b), OBJ(c), 0))    /* a the shop, b the buyer */            \
+    X3(UnitSold, 0x0bb7c0, ev_record(272, OBJ(a), OBJ(c), NULL, b ? *(DWORD *)(OBJ(b) + 0x34) : 0)) /* b sold */ \
+    X1(IssuedOrder, 0x28b8b0, issued_record(OBJ(pl), OBJ(a), ORDER_IMMEDIATE))                                     \
+    X1(IssuedPoint, 0x28be70, issued_record(OBJ(pl), OBJ(a), ORDER_POINT))                                         \
+    X1(IssuedTarget, 0x28d270, issued_record(OBJ(pl), OBJ(a), ORDER_TARGET))
 
 #define DETOUR(name, params, args, record)                                                                           \
     static int(__fastcall *name##_orig) params;                                                                     \
@@ -159,6 +253,10 @@ static int event_record(const Event *e, int player, BinEvent *r) {
     case 18: /* attacked */
         r->other_id = other;
         break;
+    case 272: /* unit_sold: a mercenary or tavern hero; the record names the buyer and the sold unit's type */
+        r->other_id = other;
+        r->type_id = e->argument;
+        break;
     case 274: /* item_sold */
         r->other_id = other;
         r->type_id = item_seen ? e->item_type : 0;
@@ -182,6 +280,18 @@ unsigned events_gather(BB *out, int player) {
             bb_push(out, &r, sizeof r);
     }
     g_cursor[player] = head;
+    return lost;
+}
+
+/* The orders given to `player`'s units since its previous observation, oldest first; returns the number lost. */
+unsigned orders_gather(BB *out, int player) {
+    unsigned from = g_ord_cursor[player], head = g_ord_head[player];
+    unsigned lost = head - from > ORD_CAP ? head - from - ORD_CAP : 0;
+    if (lost)
+        from = head - ORD_CAP;
+    for (unsigned k = from; k != head; k++)
+        bb_push(out, &g_ord[player][k % ORD_CAP], sizeof(BinOrder));
+    g_ord_cursor[player] = head;
     return lost;
 }
 
@@ -209,6 +319,7 @@ static const struct {
     {47, "summon", "summoned_id", "type_id", NULL},
     {49, "item_pickup", "item_id", "type_id", NULL},
     {50, "item_use", NULL, "type_id", NULL},
+    {272, "unit_sold", "buyer_id", "type_id", NULL},
     {274, "item_sold", "buyer_id", "type_id", NULL},
     {277, "spell_effect", NULL, "ability_id", NULL},
 };
@@ -242,7 +353,8 @@ void events_json(JW *w, const BinEvent *events, size_t n) {
 void events_init_hooks(void) {
 #define INSTALL(name, rva, record) MH_CreateHook(g_base + (rva), (void *)name##_hook, (void **)&name##_orig),
     MH_STATUS s[] = {FIRE_KINDS(INSTALL, INSTALL, INSTALL) MH_CreateHook(
-        g_base + RVA_SPELL_EFFECT, (void *)SpellEffect_hook, (void **)&SpellEffect_orig)};
+        g_base + RVA_SPELL_EFFECT, (void *)SpellEffect_hook, (void **)&SpellEffect_orig),
+                     MH_CreateHook(g_base + RVA_PLAYER_ORDER, (void *)PlayerOrder_hook, (void **)&PlayerOrder_orig)};
     int ok = 0;
     for (size_t i = 0; i < sizeof s / sizeof s[0]; i++)
         ok += s[i] == MH_OK;

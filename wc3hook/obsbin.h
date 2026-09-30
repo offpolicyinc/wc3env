@@ -8,7 +8,7 @@
 #include <string.h>
 
 #define OBS_MAGIC 0x31424f57 /* "WOB1" little-endian */
-#define OBS_VERSION 2
+#define OBS_VERSION 3
 #define OBS_MAP_BYTES (16u << 20)
 
 enum {
@@ -22,6 +22,7 @@ enum {
     T_EVENTS,
     T_HEROES,
     T_RESEARCH,
+    T_ORDERS,
     OBS_TABLES
 };
 
@@ -32,7 +33,7 @@ typedef struct {
     DWORD magic, version, size, player, sequence, game_time_ms;
     int gold, lumber, food_used, food_cap;
     DWORD result; /* 0 none, 1 victory, 2 defeat, 3 draw */
-    DWORD events_lost;
+    DWORD events_lost, orders_lost;
     float time_of_day; /* 0..24, day from 6 to 18 */
     int score[25]; /* PLAYER_SCORE_* order, as SCORE_FIELDS */
     DWORD tables;
@@ -105,12 +106,28 @@ typedef struct {
     DWORD type_id; /* an upgrade the observer has, at its level (GetPlayerTechCount) */
     int level;
 } BinResearch;
+#define ORDER_IMMEDIATE 0
+#define ORDER_POINT 1
+#define ORDER_TARGET 2
+#define ORIGIN_ENGINE 0 /* the engine's own: a worker returning its load, a unit acquiring a target */
+#define ORIGIN_PLAYER 1 /* a player's command (the network, a replay, or act), as commanded */
+#define ORIGIN_SCRIPT 2 /* JASS: AI scripts and map triggers */
+typedef struct {
+    DWORD unit_id, order_id; /* an order given to one of the observer's units, as it was issued */
+    DWORD kind;              /* ORDER_IMMEDIATE, ORDER_POINT or ORDER_TARGET */
+    DWORD target_id;         /* object id for a target order, else 0xffffffff */
+    DWORD item_type;         /* the type of the item a give or drop moves, else 0 */
+    float x, y;              /* a point order's point (a target order's: where the target was), else 0 */
+    DWORD origin;            /* ORIGIN_* */
+    DWORD queued;            /* a player's Shift command: 1 */
+    DWORD time_ms;           /* game time when it was given */
+} BinOrder;
 
 /* src/wc3env/binary.py's dtypes have these sizes; tests/unit/test_binary.py checks its side */
-typedef char bin_sizes_match[sizeof(BinHeader) == 276 && sizeof(BinUnit) == 100 && sizeof(BinAbility) == 24 &&
+typedef char bin_sizes_match[sizeof(BinHeader) == 292 && sizeof(BinUnit) == 100 && sizeof(BinAbility) == 24 &&
                                      sizeof(BinBuff) == 8 && sizeof(BinQueue) == 12 && sizeof(BinInventory) == 16 &&
                                      sizeof(BinItem) == 16 && sizeof(BinDestructable) == 24 && sizeof(BinEvent) == 20 &&
-                                     sizeof(BinHero) == 24 && sizeof(BinResearch) == 8
+                                     sizeof(BinHero) == 24 && sizeof(BinResearch) == 8 && sizeof(BinOrder) == 40
                                  ? 1
                                  : -1];
 

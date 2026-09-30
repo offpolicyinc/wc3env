@@ -20,9 +20,9 @@ import numpy as np
 from .protocol import SCORE_FIELDS
 
 MAGIC = 0x31424F57
-VERSION = 2
+VERSION = 3
 MAP_BYTES = 16 << 20
-TABLES = ("units", "abilities", "buffs", "queue", "inventory", "items", "destructables", "events", "heroes", "research")
+TABLES = ("units", "abilities", "buffs", "queue", "inventory", "items", "destructables", "events", "heroes", "research", "orders")
 
 _U4, _I4, _F4 = "<u4", "<i4", "<f4"
 DTYPES = {
@@ -82,10 +82,24 @@ DTYPES = {
         ]
     ),
     "research": np.dtype([("type_id", _U4), ("level", _I4)]),
+    "orders": np.dtype(
+        [
+            ("unit_id", _U4),
+            ("order_id", _U4),
+            ("kind", _U4),
+            ("target_id", _U4),
+            ("item_type", _U4),
+            ("x", _F4),
+            ("y", _F4),
+            ("origin", _U4),
+            ("queued", _U4),
+            ("time_ms", _U4),
+        ]
+    ),
 }
-# obsbin.h BinHeader: 276 bytes, one unpack per observation; the table entries follow the table count
-HEADER = struct.Struct(f"<6I4i2If{len(SCORE_FIELDS)}iI{3 * len(TABLES)}I")
-_TIME_OF_DAY = 12
+# obsbin.h BinHeader: 292 bytes, one unpack per observation; the table entries follow the table count
+HEADER = struct.Struct(f"<6I4i3If{len(SCORE_FIELDS)}iI{3 * len(TABLES)}I")
+_TIME_OF_DAY = 13
 _SCORE = slice(_TIME_OF_DAY + 1, _TIME_OF_DAY + 1 + len(SCORE_FIELDS))
 _TABLE_ENTRIES = _SCORE.stop + 1
 
@@ -96,6 +110,9 @@ LUMBER, INVULNERABLE = 1, 2
 # units.state
 STATES = ("", "constructing", "upgrading")
 RESULTS = ("", "victory", "defeat", "draw")
+# orders.kind and orders.origin (who gave the order: the engine on its own, a player's command, a JASS script)
+IMMEDIATE, POINT, TARGET = 0, 1, 2
+ORIGINS = ("engine", "player", "script")
 # events.kind: the engine event id, and the JSON event's kind
 EVENT_KINDS = {
     18: "attacked",
@@ -117,6 +134,7 @@ EVENT_KINDS = {
     47: "summon",
     49: "item_pickup",
     50: "item_use",
+    272: "unit_sold",
     274: "item_sold",
     277: "spell_effect",
 }
@@ -140,6 +158,7 @@ class BinaryObservation:
     food_cap: int
     result: str
     events_lost: int
+    orders_lost: int
     time_of_day: float  # 0..24; day from 6 to 18
     score: dict[str, int]
     units: np.ndarray
@@ -152,6 +171,7 @@ class BinaryObservation:
     events: np.ndarray
     heroes: np.ndarray
     research: np.ndarray
+    orders: np.ndarray  # orders given to the observer's units since its previous observation, oldest first
     raw: bytes = field(repr=False)  # the records the arrays view
 
     def __reduce__(self):  # pickle as the bytes (VectorSession's pipes): cheaper than the arrays
@@ -182,7 +202,7 @@ def parse(data: bytes) -> BinaryObservation:
     if len(data) < HEADER.size:
         raise ValueError("binary observation is shorter than its header")
     h = HEADER.unpack_from(data)
-    magic, version, size, player, sequence, time_ms, gold, lumber, food_used, food_cap, result, lost = h[:12]
+    magic, version, size, player, sequence, time_ms, gold, lumber, food_used, food_cap, result, lost, orders_lost = h[:13]
     if magic != MAGIC or version != VERSION or size != len(data):
         raise ValueError("binary observation header does not match this wc3env version")
     tables = {}
@@ -201,6 +221,7 @@ def parse(data: bytes) -> BinaryObservation:
         food_cap=food_cap,
         result=RESULTS[result],
         events_lost=lost,
+        orders_lost=orders_lost,
         time_of_day=h[_TIME_OF_DAY],
         score=dict(zip(SCORE_FIELDS, h[_SCORE])),
         raw=data,

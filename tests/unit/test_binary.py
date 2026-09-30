@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 
-from wc3env.binary import DEAD, DTYPES, HEADER, HERO, INSIDE, MAGIC, OWN, TABLES, VERSION, fourcc, parse
+from wc3env.binary import DEAD, DTYPES, HEADER, HERO, INSIDE, MAGIC, OWN, POINT, TABLES, VERSION, fourcc, parse
 from wc3env.protocol import own_unit_ids
 
 
@@ -17,16 +17,16 @@ def encode(**tables):
         offset += records.nbytes
         body += records.tobytes()
     score = [0] * 24 + [7]
-    # magic, version, size, player, sequence, time; gold, lumber, food used, food cap; result, events lost;
-    # time of day
-    head = [MAGIC, VERSION, offset, 1, 0, 61250, 500, 0, 0, 0, 2, 0, 8.5, *score, len(TABLES), *entries]
+    # magic, version, size, player, sequence, time; gold, lumber, food used, food cap; result, events lost,
+    # orders lost; time of day
+    head = [MAGIC, VERSION, offset, 1, 0, 61250, 500, 0, 0, 0, 2, 0, 3, 8.5, *score, len(TABLES), *entries]
     return HEADER.pack(*head) + body
 
 
 class BinaryObservationTest(unittest.TestCase):
     def test_record_sizes_match_the_dll(self):
         sizes = {name: dtype.itemsize for name, dtype in DTYPES.items()}
-        self.assertEqual(HEADER.size, 276)
+        self.assertEqual(HEADER.size, 292)
         self.assertEqual(
             sizes,
             {
@@ -40,6 +40,7 @@ class BinaryObservationTest(unittest.TestCase):
                 "events": 20,
                 "heroes": 24,
                 "research": 8,
+                "orders": 40,
             },
         )
 
@@ -58,10 +59,12 @@ class BinaryObservationTest(unittest.TestCase):
                 events=[(20, 15500, 0, peasant, 0)],
                 heroes=[(15600, 250, 1, 25, 15, 17)],
                 research=[(int.from_bytes(b"Rhde", "big"), 1)],
+                orders=[(15419, 851986, POINT, 0xFFFFFFFF, 0, 100.0, -200.0, 1, 0, 61000)],
             )
         )
         self.assertEqual((obs.player, obs.game_time_seconds, obs.gold, obs.result), (1, 61.25, 500, "defeat"))
         self.assertEqual(obs.time_of_day, 8.5)
+        self.assertEqual((obs.orders_lost, obs.orders["y"].tolist(), obs.orders["origin"].tolist()), (3, [-200.0], [1]))
         self.assertEqual(obs.heroes["xp"].tolist(), [250])
         self.assertEqual(fourcc(obs.research["type_id"][0]), "Rhde")
         self.assertEqual(obs.units["damage_max"].tolist(), [6] * 4)

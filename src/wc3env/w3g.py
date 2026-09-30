@@ -16,11 +16,44 @@ import struct
 import zlib
 from collections.abc import Iterator
 from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 
 MAGIC = b"Warcraft III recorded game\x1a\x00"
 RACES = {0x01: "human", 0x02: "orc", 0x04: "nightelf", 0x08: "undead", 0x20: "random"}
 OBSERVER_TEAM = 24
+# fixed-size actions: id -> bytes after the id (w3g_format.txt, patches from 1.13 on)
+ACTION_SIZES = {
+    0x01: 0,  # pause
+    0x02: 0,  # resume
+    0x03: 1,  # game speed
+    0x04: 0,
+    0x05: 0,
+    0x07: 4,  # save game finished
+    0x10: 14,  # order, no target: flags, order id, two unknown words
+    0x11: 22,  # order at a point
+    0x12: 30,  # order at a unit or point
+    0x13: 38,  # give or drop an item
+    0x14: 43,  # order with two targets
+    0x18: 2,  # select control group
+    0x19: 12,  # select subgroup
+    0x1A: 0,
+    0x1B: 9,
+    0x1C: 9,  # select ground item
+    0x1D: 8,  # cancel hero revival
+    0x1E: 5,  # remove unit from production queue
+    0x21: 8,
+    0x50: 5,  # change ally options
+    0x51: 9,  # transfer resources
+    0x61: 0,  # escape
+    0x62: 12,
+    0x66: 0,  # hero skill submenu
+    0x67: 0,  # building submenu
+    0x68: 12,  # minimap ping
+    0x69: 16,
+    0x6A: 16,
+    0x75: 1,
+}
 
 
 @dataclass(frozen=True)
@@ -49,8 +82,28 @@ class Replay:
     def opponents(self) -> tuple[Player, ...]:
         return tuple(p for p in self.players if not p.observer)
 
+    @cached_property
+    def pauses(self) -> tuple[tuple[int, int], ...]:
+        """(start, end) replay times of each pause. The replay's clock (the times `commands` gives) keeps
+        counting while a player has the game paused; the game's clock does not."""
+        out, start = [], None
+        for t, _, a, _ in self.actions():
+            if a == 0x01 and start is None:
+                start = t
+            elif a == 0x02 and start is not None:
+                out.append((start, t))
+                start = None
+        if start is not None:
+            out.append((start, self.duration_ms))
+        return tuple(out)
+
+    def game_ms(self, t: int) -> int:
+        """The game time at replay time t: t less the paused time before it."""
+        return t - sum(min(t, end) - start for start, end in self.pauses if start < t)
+
     def commands(self) -> Iterator[tuple[int, int, bytes]]:
-        """(game time in ms, player id, that player's action records for the turn), in order."""
+        """(replay time in ms, player id, that player's action records for the turn), in order. Replay time
+        includes paused time: `game_ms` gives the game time."""
         b, at, t = self.data, self.turns_at, 0
         while at < len(b):
             rid = b[at]
@@ -80,8 +133,31 @@ class Replay:
             else:
                 raise ValueError(f"unknown replay record {rid:#x} at {at}")
 
+    def actions(self) -> Iterator[tuple[int, int, int, bytes]]:
+        """(replay time in ms, player id, action id, the action's bytes after its id) for every action, in order.
+        Order actions (0x10 to 0x14) start with the W3G flags (2 bytes) and the order id (4)."""
+        for t, pid, data in self.commands():
+            p = 0
+            while p < len(data):
+                a = data[p]
+                if a in (0x16, 0x17):  # selection, control group: mode or group, count, (id, salt) pairs
+                    size = 3 + 8 * struct.unpack_from("<H", data, p + 2)[0]
+                elif a == 0x06:  # save game: a file name
+                    size = data.index(b"\0", p + 1) - p
+                elif a == 0x60:  # map trigger chat: two words, then a string
+                    size = data.index(b"\0", p + 9) - p
+                elif a == 0x6B:  # a map's stored-integer sync (W3MMD stats): three strings, then the value
+                    end = data.index(b"\0", data.index(b"\0", data.index(b"\0", p + 1) + 1) + 1)
+                    size = end + 4 - p
+                elif a in ACTION_SIZES:
+                    size = ACTION_SIZES[a]
+                else:
+                    raise ValueError(f"unknown replay action {a:#x}")
+                yield t, pid, a, data[p + 1 : p + 1 + size]
+                p += 1 + size
+
     def selections(self) -> Iterator[tuple[int, int, list[int]]]:
-        """(game time in ms, player id, object ids) for each selection change a command block starts with."""
+        """(replay time in ms, player id, object ids) for each selection change a command block starts with."""
         for t, pid, data in self.commands():
             p = 0
             while p + 4 <= len(data) and data[p] == 0x16:  # change selection: mode, count, (id, salt) pairs

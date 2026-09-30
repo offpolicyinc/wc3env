@@ -187,7 +187,7 @@ typedef struct {
 static const DWORD RECORD_SIZE[OBS_TABLES] = {sizeof(BinUnit),         sizeof(BinAbility), sizeof(BinBuff),
                                               sizeof(BinQueue),        sizeof(BinInventory), sizeof(BinItem),
                                               sizeof(BinDestructable), sizeof(BinEvent),   sizeof(BinHero),
-                                              sizeof(BinResearch)};
+                                              sizeof(BinResearch),     sizeof(BinOrder)};
 #define RECORDS(o, table, type) ((const type *)(o)->t[table].p)
 #define COUNT(o, table) ((o)->t[table].n / RECORD_SIZE[table])
 
@@ -530,6 +530,7 @@ static Obs *gather(int player, int seq, BinHeader *h) {
     h->sequence = (DWORD)seq;
     h->game_time_ms = game_time();
     h->events_lost = events_gather(&o.t[T_EVENTS], player);
+    h->orders_lost = orders_gather(&o.t[T_ORDERS], player);
     int pj = NATIVE(RVA_N_PLAYER, NativeI_I)(player);
     for (size_t i = 0; i < sizeof UPGRADES / sizeof UPGRADES[0]; i++) {
         BinResearch t = {UPGRADES[i], NATIVE(RVA_N_TECHCOUNT, NativeI_III)(pj, (int)UPGRADES[i], 1)};
@@ -569,6 +570,20 @@ DWORD obs_write_binary(BYTE *dst, DWORD cap, int player, int seq) {
 }
 
 /* ---- the JSON observation, formatted from the same records ---------------------------------------- */
+/* An order id as act's command name, a build or train order's type id, or the number. */
+static void json_order_name(JW *w, DWORD id) {
+    jw_key(w, "name");
+    const char *name = id == 851970u ? "harvest" : NULL; /* the harvest command's own id (act.c O_HARVEST) */
+    for (size_t i = 0; i < sizeof ORDER_NAMES / sizeof ORDER_NAMES[0] && !name; i++)
+        if (ORDER_NAMES[i].id == id)
+            name = ORDER_NAMES[i].name;
+    if (name)
+        jw_string(w, name);
+    else if (id >> 24)
+        jw_fourcc(w, id);
+    else
+        jw_uint(w, id);
+}
 static void json_order(JW *w, const BinUnit *r) {
     jw_key(w, "order");
     if (!r->order_id) {
@@ -576,17 +591,7 @@ static void json_order(JW *w, const BinUnit *r) {
         return;
     }
     jw_open(w, '{');
-    jw_key(w, "name");
-    const char *name = r->order_id == 851970u ? "harvest" : NULL; /* the harvest command's own id (act.c O_HARVEST) */
-    for (size_t i = 0; i < sizeof ORDER_NAMES / sizeof ORDER_NAMES[0] && !name; i++)
-        if (ORDER_NAMES[i].id == r->order_id)
-            name = ORDER_NAMES[i].name;
-    if (name)
-        jw_string(w, name);
-    else if (r->order_id >> 24)
-        jw_fourcc(w, r->order_id);
-    else
-        jw_uint(w, r->order_id);
+    json_order_name(w, r->order_id);
     jw_key(w, "target_id");
     if (r->order_target != 0xffffffff)
         jw_uint(w, r->order_target);
@@ -775,6 +780,45 @@ void obs_write_json(JW *w, int player, int seq) {
     jw_close(w, ']');
     jw_key(w, "events_lost");
     jw_uint(w, h.events_lost);
+    jw_key(w, "orders");
+    jw_open(w, '[');
+    for (size_t k = 0; k < COUNT(o, T_ORDERS); k++) {
+        static const char *ORIGINS[] = {"engine", "player", "script"};
+        const BinOrder *r = &RECORDS(o, T_ORDERS, BinOrder)[k];
+        jw_open(w, '{');
+        jw_key(w, "unit_id");
+        jw_uint(w, r->unit_id);
+        json_order_name(w, r->order_id);
+        jw_key(w, "target_id");
+        if (r->kind == ORDER_TARGET)
+            jw_uint(w, r->target_id);
+        else
+            jw_null(w);
+        jw_key(w, "x");
+        if (r->kind != ORDER_IMMEDIATE)
+            jw_num(w, r->x);
+        else
+            jw_null(w);
+        jw_key(w, "y");
+        if (r->kind != ORDER_IMMEDIATE)
+            jw_num(w, r->y);
+        else
+            jw_null(w);
+        if (r->item_type) {
+            jw_key(w, "item_type_id");
+            jw_fourcc(w, r->item_type);
+        }
+        jw_key(w, "origin");
+        jw_string(w, ORIGINS[r->origin]);
+        jw_key(w, "queued");
+        jw_bool(w, r->queued);
+        jw_key(w, "game_time_seconds");
+        jw_num(w, r->time_ms / 1000.0);
+        jw_close(w, '}');
+    }
+    jw_close(w, ']');
+    jw_key(w, "orders_lost");
+    jw_uint(w, h.orders_lost);
     jw_key(w, "chat");
     if (NATIVE(RVA_N_PLAYER, NativeI_I)(player) == NATIVE(RVA_N_LOCAL_PLAYER, NativeI_V)())
         chat_write_json(w);

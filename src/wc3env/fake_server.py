@@ -125,6 +125,8 @@ class SyntheticWorld:
         return {
             "observer": player,
             "events_lost": 0,
+            "orders": [],
+            "orders_lost": 0,
             "chat": [],
             "destructables": [],
             "map": {"bounds": {"min_x": -10000, "min_y": -10000, "max_x": 10000, "max_y": 10000}},

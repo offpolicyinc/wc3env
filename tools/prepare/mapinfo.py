@@ -87,7 +87,9 @@ def placed_units(data: bytes) -> list[dict]:
 
 def camera_bounds(script: str) -> list[float]:
     """The playable area (left, bottom, right, top): the first corners of the script's SetCameraBounds."""
-    numbers = re.search(r"SetCameraBounds\(\s*(-?[\d.]+)[^,]*,\s*(-?[\d.]+)[^,]*,\s*(-?[\d.]+)[^,]*,\s*(-?[\d.]+)", script)
+    numbers = re.search(
+        r"SetCameraBounds\(\s*(-?[\d.]+)[^,]*,\s*(-?[\d.]+)[^,]*,\s*(-?[\d.]+)[^,]*,\s*(-?[\d.]+)", script
+    )
     if numbers is None:
         raise RuntimeError("the map script sets no camera bounds")
     return [float(v) for v in numbers.groups()]

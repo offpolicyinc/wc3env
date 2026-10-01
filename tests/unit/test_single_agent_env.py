@@ -108,7 +108,7 @@ class EnvTest(unittest.TestCase):
         with WC3Env(GameConfig(map="m"), game_factory=BlockingGame) as env:
             env.reset()
 
-            def blocked(ms):
+            def blocked(ms, **_):
                 entered.set()
                 if not cancelled.wait(2):
                     raise AssertionError("close did not cancel I/O")

@@ -28,8 +28,8 @@ class SessionTest(unittest.TestCase):
         server = self.games[-1].server
         server.log.clear()
         observations, done, info = self.session.step(actions)
-        self.assertEqual([r["method"] for r in server.log], ["act", "act", "step", "observe", "observe"])
-        self.assertEqual([r["params"]["player"] for r in server.log[:2]], [0, 1])
+        self.assertEqual([r["method"] for r in server.log], ["step", "observe", "observe"])  # actions ride the step
+        self.assertEqual(list(server.log[0]["params"]["actions"]), ["0", "1"])
         self.assertEqual({o["game_time_seconds"] for o in observations.values()}, {1.0})
         self.assertEqual({o["sequence"] for o in observations.values()}, {1})
         self.assertEqual(info["rejected"], {0: [], 1: []})
@@ -71,14 +71,15 @@ class SessionTest(unittest.TestCase):
     def test_placements_are_returned_per_player_without_mutating_actions(self):
         self.session.reset()
         actions = {0: [Action(1001, "build", {"type_id": "hhou", "x": 0, "y": 0, "auto_place": True})], 1: []}
-        with patch.object(
-            self.session.game.rpc,
-            "act",
-            side_effect=[
-                {"rejected": [], "placements": [{"index": 0, "x": 128, "y": 256}]},
-                {"rejected": [], "placements": []},
-            ],
-        ):
+        rpc = self.session.game.rpc
+        original = rpc.step
+
+        def placed(ms, observe=None, actions=None):
+            result = original(ms, observe=observe, actions=actions)
+            result["acts"]["0"]["placements"] = [{"index": 0, "x": 128, "y": 256}]
+            return result
+
+        with patch.object(rpc, "step", side_effect=placed):
             _, _, info = self.session.step(actions)
         self.assertEqual(info["placements"], {0: [{"index": 0, "x": 128, "y": 256}], 1: []})
         self.assertEqual((actions[0][0].arguments["x"], actions[0][0].arguments["y"]), (0, 0))
@@ -110,14 +111,11 @@ class SessionTest(unittest.TestCase):
     def test_partial_round_failure_requires_reset(self):
         self.session.reset()
         rpc = self.session.game.rpc
-        original = rpc.act
 
-        def fail_second(player, actions):
-            if player == 1:
-                raise TimeoutError("lost second reply")
-            return original(player, actions)
+        def lost(ms, observe=None, actions=None):
+            raise TimeoutError("lost the step's reply")
 
-        with patch.object(rpc, "act", side_effect=fail_second):
+        with patch.object(rpc, "step", side_effect=lost):
             with self.assertRaises(TimeoutError):
                 self.session.step({0: [Action(1001, "stop", {})], 1: [Action(2000, "stop", {})]})
         with self.assertRaisesRegex(RuntimeError, "reset"):

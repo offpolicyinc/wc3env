@@ -498,8 +498,64 @@ void rpc_step_finished(void) {
         SetEvent(g_stepped);
 }
 
+static int act_parse(yyjson_val *arr, int player, ActJob *job, const char **code, char *detail, size_t detail_size);
+static void act_ack(JW *w, const ActJob *job);
+
+typedef struct {
+    ActJob jobs[16];
+    int n;
+} ActJobs;
+
+static void acts_job(void *arg) {
+    ActJobs *a = arg;
+    for (int k = 0; k < a->n; k++)
+        act_job(&a->jobs[k]);
+}
+
+/* step's optional "actions": {"<player>": [action, ...]} for agent players, as act takes them. Returns NULL, or
+ * an error code with its detail in `detail`. */
+static const char *step_actions(yyjson_val *actions, ActJobs *out, char *detail, size_t detail_size) {
+    out->n = 0;
+    if (actions == NULL)
+        return NULL;
+    if (!yyjson_is_obj(actions)) {
+        _snprintf(detail, detail_size, "actions must map players to lists");
+        return "bad_params";
+    }
+    if (game_is_replay()) {
+        _snprintf(detail, detail_size, "replay actions come from the recording");
+        return "bad_status";
+    }
+    size_t idx, max;
+    yyjson_val *key, *arr;
+    yyjson_obj_foreach(actions, idx, max, key, arr) {
+        const char *name = yyjson_get_str(key);
+        char *end = NULL;
+        long player = strtol(name, &end, 10);
+        if (end == name || *end || player < 0 || player > 15 || !player_is_agent((int)player) || out->n >= 16) {
+            _snprintf(detail, detail_size, "actions: %s is not an agent player", name);
+            return "bad_params";
+        }
+        if (!yyjson_is_arr(arr)) {
+            _snprintf(detail, detail_size, "actions[%s] must be a list", name);
+            return "bad_params";
+        }
+        const char *code;
+        if (!act_parse(arr, (int)player, &out->jobs[out->n++], &code, detail, detail_size))
+            return code;
+    }
+    return NULL;
+}
+
+static void free_acts(ActJobs *a) {
+    for (int k = 0; k < a->n; k++)
+        free(a->jobs[k].items);
+}
+
 static void m_step(JW *w, LONGLONG id, yyjson_val *params) {
     LONGLONG ms;
+    ActJobs acts = {0};
+    char detail[96];
     if (g_status != ST_IN_GAME) {
         reply_error(w, id, "bad_status", STATUS_ERR("step"));
         return;
@@ -517,20 +573,31 @@ static void m_step(JW *w, LONGLONG id, yyjson_val *params) {
         reply_error(w, id, "bad_params", invalid);
         return;
     }
+    const char *code = step_actions(yyjson_obj_get(params, "actions"), &acts, detail, sizeof detail);
+    if (code) {
+        reply_error(w, id, code, detail);
+        free_acts(&acts);
+        return;
+    }
+    if (acts.n && !run_on_game_thread(acts_job, &acts, 5000)) {  /* queued for the step's first GameUpdate */
+        reply_error(w, id, "bad_status", "the game thread did not answer");
+        free_acts(&acts);
+        return;
+    }
     DWORD before = game_time();
     ResetEvent(g_stepped);
     const char *err = step_request((DWORD)ms);
     if (strcmp(err, "ok") != 0) {
         reply_error(w, id, "bad_status", err);
-        return;
+        goto done;
     }
     if (real_wait(g_stepped, 120000) != WAIT_OBJECT_0) {
         reply_error(w, id, "bad_status", "the step did not finish in 120 s");
-        return;
+        goto done;
     }
     if (!strcmp(g_step_reason, "simulation_closed")) {
         reply_error(w, id, "bad_status", "simulation closed during step; launch a new process");
-        return;
+        goto done;
     }
     reply_head(w, id, 1);
     jw_key(w, "result");
@@ -546,12 +613,25 @@ static void m_step(JW *w, LONGLONG id, yyjson_val *params) {
     if (g_step_binary.n) {
         if (!g_step_binary.ok) {
             reply_error(w, id, "bad_status", "the binary observations did not fit the mapping");
-            return;
+            goto done;
         }
         write_binary(w, &g_step_binary);
     }
+    if (acts.n) {
+        jw_key(w, "acts");
+        jw_open(w, '{');
+        for (int k = 0; k < acts.n; k++) {
+            char name[8];
+            _snprintf(name, sizeof name, "%d", acts.jobs[k].player);
+            jw_key(w, name);
+            act_ack(w, &acts.jobs[k]);
+        }
+        jw_close(w, '}');
+    }
     jw_close(w, '}');
     jw_close(w, '}');
+done:
+    free_acts(&acts);
 }
 
 static int player_param(yyjson_val *params, int required, LONGLONG *out) {
@@ -607,52 +687,29 @@ static void m_observe(JW *w, LONGLONG id, yyjson_val *params) {
     jw_close(w, '}');
 }
 
-static void m_act(JW *w, LONGLONG id, yyjson_val *params) {
-    ActJob job = {0};
-    LONGLONG player;
-    if (g_status != ST_IN_GAME) {
-        reply_error(w, id, "bad_status", STATUS_ERR("act"));
-        return;
+/* One player's batch of actions from its JSON list into job (items calloc'ed; free them). Returns 0 with an
+ * error code and detail for a malformed batch; a malformed action is only marked rejected. */
+static int act_parse(yyjson_val *arr, int player, ActJob *job, const char **code, char *detail, size_t detail_size) {
+    job->player = player;
+    job->n = (int)yyjson_arr_size(arr);
+    job->items = calloc(job->n, sizeof *job->items);
+    if (job->n && !job->items) {
+        *code = "bad_status";
+        _snprintf(detail, detail_size, "could not allocate action batch");
+        return 0;
     }
-    if (game_is_replay()) {
-        reply_error(w, id, "bad_status", "replay actions come from the recording");
-        return;
-    }
-    if (!player_param(params, 1, &player)) {
-        reply_error(w, id, "bad_params", "player must be a slot 0..15");
-        return;
-    }
-    if (!player_is_agent((int)player)) {
-        reply_error(w, id, "bad_params", "player is not configured as an agent");
-        return;
-    }
-    yyjson_val *arr = yyjson_obj_get(params, "actions");
-    if (arr == NULL || !yyjson_is_arr(arr)) {
-        reply_error(w, id, "bad_params", "actions must be a list");
-        return;
-    }
-    job.player = (int)player;
-    job.n = (int)yyjson_arr_size(arr);
-    job.items = calloc(job.n, sizeof *job.items);
-    if (job.n && !job.items) {
-        reply_error(w, id, "bad_status", "could not allocate action batch");
-        return;
-    }
-    for (int k = 0; k < job.n; k++) {
+    for (int k = 0; k < job->n; k++) {
         yyjson_val *a = yyjson_arr_get(arr, k);
-        ActItem *it = &job.items[k];
-        char detail[64];
-        _snprintf(detail, sizeof detail, "actions[%d] must be {unit_id, command, arguments}", k);
+        ActItem *it = &job->items[k];
+        *code = "bad_params";
+        _snprintf(detail, detail_size, "actions[%d] must be {unit_id, command, arguments}", k);
         if (!yyjson_is_obj(a) || !jr_is_int(yyjson_obj_get(a, "unit_id"), &it->unit_id) ||
             !jr_str(yyjson_obj_get(a, "command"), it->command, sizeof it->command)) {
-            reply_error(w, id, "bad_params", detail);
-            goto cleanup;
+            return 0;
         }
         yyjson_val *args = yyjson_obj_get(a, "arguments");
-        if (args != NULL && !yyjson_is_obj(args)) {
-            reply_error(w, id, "bad_params", detail);
-            goto cleanup;
-        }
+        if (args != NULL && !yyjson_is_obj(args))
+            return 0;
         yyjson_val *queued = yyjson_obj_get(args, "queued");
         if (queued && !yyjson_is_bool(queued))
             it->reason = RJ_BAD_ARGS;
@@ -711,29 +768,28 @@ static void m_act(JW *w, LONGLONG id, yyjson_val *params) {
              !strcmp(it->command, "drop_item")))
             it->reason = RJ_BAD_ARGS;
     }
-    if (!run_on_game_thread(act_job, &job, 5000)) {
-        reply_error(w, id, "bad_status", "the game thread did not answer");
-        goto cleanup;
-    }
-    reply_head(w, id, 1);
-    jw_key(w, "result");
+    return 1;
+}
+
+/* What the game made of a batch: {"rejected": [{index, reason}], "placements": [{index, x, y}]}. */
+static void act_ack(JW *w, const ActJob *job) {
     jw_open(w, '{');
     jw_key(w, "rejected");
     jw_open(w, '[');
-    for (int k = 0; k < job.n; k++)
-        if (job.items[k].reason) {
+    for (int k = 0; k < job->n; k++)
+        if (job->items[k].reason) {
             jw_open(w, '{');
             jw_key(w, "index");
             jw_int(w, k);
             jw_key(w, "reason");
-            jw_string(w, REASONS[job.items[k].reason]);
+            jw_string(w, REASONS[job->items[k].reason]);
             jw_close(w, '}');
         }
     jw_close(w, ']');
     jw_key(w, "placements");
     jw_open(w, '[');
-    for (int k = 0; k < job.n; k++) {
-        ActItem *a = &job.items[k];
+    for (int k = 0; k < job->n; k++) {
+        const ActItem *a = &job->items[k];
         if (a->auto_place && !a->reason) {
             jw_open(w, '{');
             jw_key(w, "index");
@@ -747,6 +803,45 @@ static void m_act(JW *w, LONGLONG id, yyjson_val *params) {
     }
     jw_close(w, ']');
     jw_close(w, '}');
+}
+
+static void m_act(JW *w, LONGLONG id, yyjson_val *params) {
+    ActJob job = {0};
+    LONGLONG player;
+    if (g_status != ST_IN_GAME) {
+        reply_error(w, id, "bad_status", STATUS_ERR("act"));
+        return;
+    }
+    if (game_is_replay()) {
+        reply_error(w, id, "bad_status", "replay actions come from the recording");
+        return;
+    }
+    if (!player_param(params, 1, &player)) {
+        reply_error(w, id, "bad_params", "player must be a slot 0..15");
+        return;
+    }
+    if (!player_is_agent((int)player)) {
+        reply_error(w, id, "bad_params", "player is not configured as an agent");
+        return;
+    }
+    yyjson_val *arr = yyjson_obj_get(params, "actions");
+    if (arr == NULL || !yyjson_is_arr(arr)) {
+        reply_error(w, id, "bad_params", "actions must be a list");
+        return;
+    }
+    const char *code;
+    char detail[64];
+    if (!act_parse(arr, (int)player, &job, &code, detail, sizeof detail)) {
+        reply_error(w, id, code, detail);
+        goto cleanup;
+    }
+    if (!run_on_game_thread(act_job, &job, 5000)) {
+        reply_error(w, id, "bad_status", "the game thread did not answer");
+        goto cleanup;
+    }
+    reply_head(w, id, 1);
+    jw_key(w, "result");
+    act_ack(w, &job);
     jw_close(w, '}');
 cleanup:
     free(job.items);

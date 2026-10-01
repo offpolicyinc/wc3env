@@ -19,9 +19,7 @@ CONFIG = GameConfig(
 def by_origin(obs, origin):
     """(unit, order, kind, target, x, y, queued) for each order of that origin in the observation."""
     fields = ("unit_id", "order_id", "kind", "target_id", "x", "y", "queued")
-    return [
-        tuple(round(o[f].item()) for f in fields) for o in obs.orders if ORIGINS[o["origin"]] == origin
-    ]
+    return [tuple(round(o[f].item()) for f in fields) for o in obs.orders if ORIGINS[o["origin"]] == origin]
 
 
 class OrdersTest(unittest.TestCase):
@@ -41,7 +39,11 @@ class OrdersTest(unittest.TestCase):
                 {
                     0: [
                         {"unit_id": peasants[0], "command": "move", "arguments": {"x": x, "y": y}},
-                        {"unit_id": peasants[0], "command": "move", "arguments": {"x": x, "y": y + 200, "queued": True}},
+                        {
+                            "unit_id": peasants[0],
+                            "command": "move",
+                            "arguments": {"x": x, "y": y + 200, "queued": True},
+                        },
                         {"unit_id": peasants[1], "command": "smart", "arguments": {"target_id": mine_id}},
                         {"unit_id": peasants[2], "command": "stop"},
                         {"unit_id": hall, "command": "train", "arguments": {"type_id": "hpea"}},

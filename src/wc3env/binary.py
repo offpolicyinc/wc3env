@@ -22,7 +22,19 @@ from .protocol import SCORE_FIELDS
 MAGIC = 0x31424F57
 VERSION = 3
 MAP_BYTES = 16 << 20
-TABLES = ("units", "abilities", "buffs", "queue", "inventory", "items", "destructables", "events", "heroes", "research", "orders")
+TABLES = (
+    "units",
+    "abilities",
+    "buffs",
+    "queue",
+    "inventory",
+    "items",
+    "destructables",
+    "events",
+    "heroes",
+    "research",
+    "orders",
+)
 
 _U4, _I4, _F4 = "<u4", "<i4", "<f4"
 DTYPES = {
@@ -202,7 +214,9 @@ def parse(data: bytes) -> BinaryObservation:
     if len(data) < HEADER.size:
         raise ValueError("binary observation is shorter than its header")
     h = HEADER.unpack_from(data)
-    magic, version, size, player, sequence, time_ms, gold, lumber, food_used, food_cap, result, lost, orders_lost = h[:13]
+    magic, version, size, player, sequence, time_ms, gold, lumber, food_used, food_cap, result, lost, orders_lost = h[
+        :13
+    ]
     if magic != MAGIC or version != VERSION or size != len(data):
         raise ValueError("binary observation header does not match this wc3env version")
     tables = {}

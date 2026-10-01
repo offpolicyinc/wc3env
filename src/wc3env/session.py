@@ -340,9 +340,10 @@ class GameSession:
                 step_result = None
                 try:
                     phase = time.perf_counter()
+                    stepping = self.config.mode == "stepping"  # stepping sends the batches with the step
                     try:
                         for p, batch in batches.items():
-                            if batch:
+                            if batch and not stepping:
                                 rpc = self.game.rpc
                                 try:
                                     acknowledgement = rpc.act(p, [a.to_dict() for a in batch])
@@ -352,14 +353,16 @@ class GameSession:
                                     rpc_timings.append({"method": "act", "player": p, **(rpc.last_timing_ms or {})})
                     finally:
                         timings["act"] = 1000 * (time.perf_counter() - phase)
-                    if self.config.mode == "stepping":
+                    if stepping:
                         phase = time.perf_counter()
                         rpc = self.game.rpc
+                        sent = {p: [a.to_dict() for a in batch] for p, batch in batches.items() if batch}
                         try:
-                            if self.config.observation == "binary":
-                                step_result = rpc.step(step_ms, observe=list(self.config.agent_slots))
-                            else:
-                                step_result = rpc.step(step_ms)
+                            observe = list(self.config.agent_slots) if self.config.observation == "binary" else None
+                            step_result = rpc.step(step_ms, observe=observe, actions=sent)
+                            for p, acknowledgement in step_result.get("acts", {}).items():
+                                rejected[int(p)] = acknowledgement["rejected"]
+                                placements[int(p)] = acknowledgement.get("placements", [])
                         finally:
                             timings["step"] = 1000 * (time.perf_counter() - phase)
                             rpc_timings.append({"method": "step", **(rpc.last_timing_ms or {})})

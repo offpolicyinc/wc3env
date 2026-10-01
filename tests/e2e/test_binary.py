@@ -126,7 +126,7 @@ class BinaryObservationTest(unittest.TestCase):
             self.assertFalse(done)
             self.assertEqual(info["elapsed_ms"], 250)
             self.assertEqual(set(observations), {0})
-            self.assertEqual([r["method"] for r in info["rpc_timings_ms"]], ["act", "step"])
+            self.assertEqual([r["method"] for r in info["rpc_timings_ms"]], ["step"])  # the actions ride the step
             with self.assertRaisesRegex(Exception, "uncontrolled unit"):
                 session.step({0: [{"unit_id": enemy, "command": "stop", "arguments": {}}]})
 

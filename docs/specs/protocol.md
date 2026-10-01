@@ -30,14 +30,18 @@ final observations readable).
 | `create_game` | `map`, `players`: nonempty list of `{slot, control, race?}`, `mode`: stepping/realtime | launched, ended | `game_time_ms`, `map`, `players`; enters in_game |
 | `reset` | | in_game, ended | `{}`; reloads and holds at 1000 ms; enters launched |
 | `save_replay` | `path`: absolute, under 260 bytes | in_game, ended | `{game_time_ms}`; writes the episode's native `.w3g` |
-| `step` | `ms`: multiple of 25 in 25..60000; `observe`: optional list of distinct player slots | in_game, stepping only | `game_time_ms`, `frames`, `elapsed_ms`, `reason`; with `observe`, `observations`: `[{player, offset, size}]` [binary observations](observations.md#binary-observations) written after the step |
+| `step` | `ms`: multiple of 25 in 25..60000; `observe`: optional list of distinct player slots; `actions`: optional `{"<player>": [action, ...]}` for agent players | in_game, stepping only | `game_time_ms`, `frames`, `elapsed_ms`, `reason`; with `observe`, `observations`: `[{player, offset, size}]` [binary observations](observations.md#binary-observations) written after the step; with `actions`, `acts`: `{"<player>": {rejected, placements}}` as `act` returns them |
 | `observe` | `player`: slot, default 0; `format`: `json` (default) or `binary` | in_game, ended | [Observation](observations.md), or for `binary` `observations`: `[{player, offset, size}]` |
 | `act` | `player`, `actions` | in_game | `rejected`: list of `{index, reason}`; `placements`: resolved `{index, x, y}` for native build searches; others queued |
 | `debug` | `op`, `args`: object | in_game | Op-specific; see Debug below |
 | `quit` | | Any | `{}`; process exits after replying |
 
 `GameSession.step(actions, ms=None)` and `WC3Env.step(actions, seconds=None)` advance by
-`config.step_ms` unless a length is given. Uninterrupted steps advance exactly the requested time. Results, replay EOF or stalls can end them early;
+`config.step_ms` unless a length is given. In stepping mode the batches travel with `step`: every player's
+actions reach the game thread in one hop and are queued for the step's first update, exactly as `act` calls
+before it would queue them, in one round trip instead of one per player plus the step (about 14% more game
+steps per CPU under Wine with two acting players). Realtime mode still sends them with `act`. A malformed
+batch fails the whole `step` before anything is queued or advanced. Uninterrupted steps advance exactly the requested time. Results, replay EOF or stalls can end them early;
 `reason` is `target`, `game_over`, `replay_end` or `stalled`. `GameSession` faults on stalls or unexpected
 short steps; reset replaces the suspect process. Successful step info includes `elapsed_ms`, `step_reason`, and per-player `placements` lists (empty when no sites were resolved). Queuing an action guarantees neither execution nor next-turn timing.
 

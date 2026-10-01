@@ -341,15 +341,27 @@ class FakeServer:
         ms = self._need(
             p, "ms", int, lambda v: 25 <= v <= 60000 and v % TURN_MS == 0, "ms must be a multiple of 25 in 25..60000"
         )
+        actions = p.get("actions") or {}
+        if not isinstance(actions, dict):
+            raise RpcFault("bad_params", "actions must map players to lists")
+        players = {}
+        for name in actions:  # every batch checked before any is applied, as the DLL does
+            if not name.isdigit():
+                raise RpcFault("bad_params", f"actions: {name} is not an agent player")
+            players[name] = int(name)
+        acts = {name: self._act({"player": players[name], "actions": batch}) for name, batch in actions.items()}
         self.world.advance(ms)
         if self.world.result:
             self.status = "ended"
-        return {
+        result = {
             "game_time_ms": self.world.game_time_ms,
             "frames": ms // TURN_MS,
             "elapsed_ms": ms,
             "reason": "game_over" if self.world.result else "target",
         }
+        if acts:
+            result["acts"] = acts
+        return result
 
     def _observe(self, p) -> dict:
         player = (

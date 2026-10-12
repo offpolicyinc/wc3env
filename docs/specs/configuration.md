@@ -156,5 +156,5 @@ failures retire only that instance; healthy games continue. Step failures and st
 also close the failed game. `step_all()` returns its exception that round, then `None` in
 later rounds. Statistics count actual advancement; always close the pool when finished.
 
-Coverage: `tests/unit/test_pool.py` and `python -m unittest tests.e2e.test_pool` check routing,
+Coverage: `python -m unittest tests.e2e.test_pool` checks routing,
 map compatibility, cleanup and stable failure ordering.

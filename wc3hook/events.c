@@ -156,6 +156,10 @@ static int __cdecl PlayerOrder_hook(BYTE *unit, BYTE *order, DWORD flags, DWORD 
  * must match its `ret`), and what is recorded from them. The issued-order functions are unit-side (this = the
  * unit, a the order object): their player-unit fire functions are called only when a trigger is registered. */
 #define OBJ(x) ((BYTE *)(x))
+/* Damage: 0x28b2a0 fires EVENT_UNIT_DAMAGED (unit-side, thiscall: this = the damaged unit, a = a pointer to the
+ * damage as a float, b = the source unit; ret 8). Every hit and spell's damage goes through it whether or not a
+ * trigger is registered (its own 0x43f0c0 check, with id 0x80234, comes after the entry). Recorded in hundredths. */
+#define DAMAGE(a) ((a) ? (DWORD)(int)(*(float *)(a) * 100.0f + 0.5f) : 0)
 #define FIRE_KINDS(X1, X2, X3)                                                                                       \
     X1(ConstructStart, 0x0ba2b0, ev_record(26, OBJ(a), NULL, NULL, 0))                                             \
     X1(ConstructCancel, 0x0ba070, ev_record(27, OBJ(a), NULL, NULL, 0))                                            \
@@ -178,7 +182,7 @@ static int __cdecl PlayerOrder_hook(BYTE *unit, BYTE *order, DWORD flags, DWORD 
     X3(HeroLearn, 0x0b9b90, ev_record(42, OBJ(a), NULL, NULL, b))        /* b the ability id */                   \
     X3(ItemSold, 0x0bb960, ev_record(274, OBJ(a), OBJ(b), OBJ(c), 0))    /* a the shop, b the buyer */            \
     X3(UnitSold, 0x0bb7c0, ev_record(272, OBJ(a), OBJ(c), NULL, b ? *(DWORD *)(OBJ(b) + 0x34) : 0)) /* b sold */ \
-    X1(IssuedOrder, 0x28b8b0, issued_record(OBJ(pl), OBJ(a), ORDER_IMMEDIATE))                                     \
+    X2(Damaged, 0x28b2a0, (handicap_damage(OBJ(pl), OBJ(b), (float *)(a)), ev_record(52, OBJ(pl), OBJ(b), NULL, DAMAGE(a)))) /* b the source; scaled first by a handicap */                     X1(IssuedOrder, 0x28b8b0, issued_record(OBJ(pl), OBJ(a), ORDER_IMMEDIATE))                                     \
     X1(IssuedPoint, 0x28be70, issued_record(OBJ(pl), OBJ(a), ORDER_POINT))                                         \
     X1(IssuedTarget, 0x28d270, issued_record(OBJ(pl), OBJ(a), ORDER_TARGET))
 
@@ -248,6 +252,10 @@ static int event_record(const Event *e, int player, BinEvent *r) {
     case 18: /* attacked */
         r->other_id = other;
         break;
+    case 52: /* damaged: the source (0 if hidden), the damage in hundredths of hit points */
+        r->other_id = other;
+        r->value = (int)e->argument;
+        break;
     case 272: /* unit_sold: a mercenary or tavern hero; the record names the buyer and the sold unit's type */
         r->other_id = other;
         r->type_id = e->argument;
@@ -314,6 +322,7 @@ static const struct {
     {47, "summon", "summoned_id", "type_id", NULL},
     {49, "item_pickup", "item_id", "type_id", NULL},
     {50, "item_use", NULL, "type_id", NULL},
+    {52, "damaged", "source_id", NULL, "hundredths"},
     {272, "unit_sold", "buyer_id", "type_id", NULL},
     {274, "item_sold", "buyer_id", "type_id", NULL},
     {277, "spell_effect", NULL, "ability_id", NULL},

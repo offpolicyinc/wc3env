@@ -203,6 +203,7 @@ def launch(
     if ai_difficulty is not None and (type(ai_difficulty) is not int or ai_difficulty not in (0, 1, 2)):
         raise ValueError("ai_difficulty must be None, 0 (easy), 1 (normal), or 2 (insane)")
     map_path = resolve_map(map)
+    handicap = None  # a replay's: staged after launch (GameSession.reset), so kept with its startup
     if map_path.suffix.lower() == ".w3g":
         # A staged game replays only from the same start: the setup shapes the map's player configuration and
         # the AI difficulty its melee AI, neither of which the .w3g records; save_replay keeps them beside it.
@@ -212,6 +213,7 @@ def launch(
         if saved.is_file():
             startup = json.loads(saved.read_text(encoding="utf-8"))
             _setup, ai_difficulty = startup.get("setup"), startup.get("ai_difficulty")
+            handicap = startup.get("handicap")
             ai_agents = tuple(startup.get("ai_agents", ())) or ai_agents
     if not set(ai_agents) <= set(agents):
         raise ValueError("ai_agents must be agent slots")
@@ -251,8 +253,15 @@ def launch(
     )
     game = Game(pid, HookPipe(pid), map_path, docs, process_handle=process_handle)
     game.startup = {
-        k: v for k, v in {"setup": _setup, "ai_difficulty": ai_difficulty, "ai_agents": list(ai_agents)}.items() if v
-    }
+        k: v
+        for k, v in {
+            "setup": _setup,
+            "ai_difficulty": ai_difficulty,
+            "ai_agents": list(ai_agents),
+            "handicap": handicap,
+        }.items()
+        if v is not None and v != []
+    }  # (difficulty 0, easy, is kept: a replay without it plays the map's AI, and goes another way)
     try:
         game.pipe.connect(connect_timeout)
         return game

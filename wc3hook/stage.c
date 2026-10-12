@@ -273,8 +273,37 @@ static const char *op_camera(yyjson_val *args, JW *w) {
 /* invulnerable {player, on}: every unit the player owns, now and at the end of every step (so
  * units it gets later too), as the whosyourdaddy cheat would. Off stops applying it; units stay. */
 static int g_invulnerable_player = -1;
+/* handicap {player, hp, damage=1}: the player's units as if their hit points were `hp` of their own and their
+ * damage `damage` of it (each in (0, 1]; 1, 1 turns it off): every hit on one of its units is scaled by 1/hp, every
+ * hit by one by `damage`, in the damage event's hook before the game applies it (events.c), so it holds for units
+ * made later, hero levels and upgrades alike. */
+static int g_handicap_player = -1;
+static float g_handicap_taken = 1.0f, g_handicap_dealt = 1.0f;
+void handicap_damage(BYTE *victim, BYTE *source, float *damage) {
+    BYTE *pl;
+    if (g_handicap_player < 0 || !damage)
+        return;
+    if (victim && (pl = unit_owner(victim)) && player_jass_id(pl) == g_handicap_player)
+        *damage *= g_handicap_taken;
+    if (source && (pl = unit_owner(source)) && player_jass_id(pl) == g_handicap_player)
+        *damage *= g_handicap_dealt;
+}
+static const char *op_handicap(yyjson_val *args, JW *w) {
+    long long p;
+    double hp, damage;
+    NEED(arg_int(args, "player", 0, 15, &p));
+    damage = 1.0; /* optional: health alone is the usual handicap */
+    if (!jr_is_num(yyjson_obj_get(args, "hp"), &hp) || !(hp > 0 && hp <= 1) ||
+        (yyjson_obj_get(args, "damage") && (!jr_is_num(yyjson_obj_get(args, "damage"), &damage) || !(damage > 0 && damage <= 1))))
+        return "hp (and damage, if given) must be numbers in (0, 1]";
+    g_handicap_player = hp == 1 && damage == 1 ? -1 : (int)p;
+    g_handicap_taken = (float)(1.0 / hp);
+    g_handicap_dealt = (float)damage;
+    return NULL;
+}
 void stage_clear(void) {
     g_invulnerable_player = -1;
+    g_handicap_player = -1;
 }
 static int __cdecl invulnerable_cb(BYTE *u, void *ctx) {
     BYTE *pl = unit_owner(u);
@@ -319,6 +348,7 @@ static const struct {
     {"resources", op_resources},
     {"ai", op_ai},
     {"invulnerable", op_invulnerable},
+    {"handicap", op_handicap},
     {"order", op_order},
     {"camera", op_camera},
     {"alliance", op_alliance},

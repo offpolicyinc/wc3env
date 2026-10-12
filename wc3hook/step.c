@@ -184,6 +184,12 @@ static void step_finish(BYTE *t, const char *why) {
  * final turn, so successive players can observe different times or missing opponent results. */
 void step_end_after_turn(void) {
     g_end_requested = 1;
+    /* No more turns in this frame: the game subtracts a turn's 25 ms before running it and loops while 25 ms are
+     * pending (0x1af22f, 0x1af408), so pending 0 ends the frame after the turn that ended the game. Otherwise the
+     * frame ran on through whatever turns it had been given, and the final time and state depended on how the
+     * step's turns happened to be split into frames (458.4 or 458.8 s in tests/e2e/extended/determinism.py). */
+    if (g_game)
+        *(DWORD *)(g_game + GAME_PENDING_MS) = 0;
 }
 
 int __fastcall GameUpdate_hook(void *self, void *edx, DWORD now) {

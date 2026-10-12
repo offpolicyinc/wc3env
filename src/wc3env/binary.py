@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import mmap
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from functools import cached_property
 
 import numpy as np
@@ -146,6 +146,7 @@ EVENT_KINDS = {
     47: "summon",
     49: "item_pickup",
     50: "item_use",
+    52: "damaged",
     272: "unit_sold",
     274: "item_sold",
     277: "spell_effect",
@@ -185,9 +186,15 @@ class BinaryObservation:
     research: np.ndarray
     orders: np.ndarray  # orders given to the observer's units since its previous observation, oldest first
     raw: bytes = field(repr=False)  # the records the arrays view
+    features_raw: bytes | None = field(default=None, repr=False)  # the hook's features block, if asked for
 
     def __reduce__(self):  # pickle as the bytes (VectorSession's pipes): cheaper than the arrays
-        return parse, (self.raw,)
+        return _rebuild, (self.raw, self.features_raw)
+
+    @cached_property
+    def features(self) -> dict | None:
+        """The model's features the hook computed for this observation (GameConfig.features), or None."""
+        return parse_features(self.features_raw) if self.features_raw else None
 
     @cached_property
     def own_unit_ids(self) -> frozenset[int]:
@@ -202,11 +209,63 @@ class SharedObservations:
     def __init__(self, pid: int):
         self._map = mmap.mmap(-1, MAP_BYTES, tagname=f"Local\\wc3hook-obs-{pid}", access=mmap.ACCESS_READ)
 
-    def read(self, offset: int, size: int) -> BinaryObservation:
-        return parse(self._map[offset : offset + size])  # one copy of the whole observation
+    def read(self, offset: int, size: int, features: tuple[int, int] | None = None) -> BinaryObservation:
+        """The observation at offset (one copy of it), with its features block at (offset, size) if given."""
+        features_raw = self._map[features[0] : features[0] + features[1]] if features else None
+        return _rebuild(self._map[offset : offset + size], features_raw)
 
     def close(self) -> None:
         self._map.close()
+
+
+def _rebuild(raw: bytes, features_raw: bytes | None) -> BinaryObservation:
+    obs = parse(raw)
+    return replace(obs, features_raw=features_raw) if features_raw else obs
+
+
+# The features block (wc3hook/features.h): the model's inputs the hook computes after an observation, for
+# training/policy (unit rows as features.py makes them, the map's tree grid, scalars, and decide.tables' masks).
+FEATURES_MAGIC, FEATURES_VERSION = 0x31544657, 1
+FEAT_FLOATS, FEAT_MAP, FEAT_HISTORY, FEAT_KINDS, FEAT_N_ARGS, FEAT_MAX_UNITS = 69, 128, 4, 21, 2828, 256
+_FEAT_HEADER = struct.Struct("<7I4i4i24s")
+_FEAT_ARG_BYTES = (FEAT_N_ARGS + 7) // 8
+_FEAT_ARG_STRIDE = (_FEAT_ARG_BYTES + 3) & ~3
+
+
+def parse_features(data: bytes) -> dict:
+    """A features block as arrays: unit rows (`units` [n, 69] and the ids features.py names, n = unit_count),
+    `trees` [128, 128], `scalars`, `previous_type`, `recent`, and the masks: `type_mask`, `argument_types` with
+    `argument_bits` [k, 354] (packed), `actor_keys` with `actor_rows` [K, 32] (packed)."""
+    h = _FEAT_HEADER.unpack_from(data)
+    magic, version, size, n, scalar_count, argument_n, actor_n = h[:7]
+    if magic != FEATURES_MAGIC or version != FEATURES_VERSION or size != len(data):
+        raise ValueError("features block does not match this wc3env version")
+    out = {"unit_count": n, "previous_type": np.array(h[7:11], np.int32), "recent": np.array(h[11:15], np.int32),
+           "type_mask": np.frombuffer(h[15][:FEAT_KINDS], np.uint8).astype(bool)}  # fmt: skip
+    at = _FEAT_HEADER.size
+
+    def take(name, dtype, shape):
+        nonlocal at
+        count = int(np.prod(shape))
+        out[name] = np.frombuffer(data, dtype, count, at).reshape(shape)
+        at += (count * np.dtype(dtype).itemsize + 3) & ~3
+
+    take("units", np.float32, (n, FEAT_FLOATS))
+    for name in ("unit_type", "unit_owner", "unit_order", "unit_queue"):
+        take(name, np.int32, (n,))
+    take("unit_inventory", np.int32, (n, 6))
+    take("unit_buffs", np.int32, (n, 8))
+    take("unit_abilities", np.int32, (n, 5))
+    take("unit_id", np.uint32, (n,))
+    take("unit_cell", np.int32, (n,))
+    take("trees", np.uint8, (FEAT_MAP, FEAT_MAP))
+    take("scalars", np.float32, (scalar_count,))
+    take("argument_types", np.int32, (argument_n,))
+    take("argument_bits", np.uint8, (argument_n, _FEAT_ARG_STRIDE))
+    out["argument_bits"] = out["argument_bits"][:, :_FEAT_ARG_BYTES]
+    take("actor_keys", np.int32, (actor_n,))
+    take("actor_rows", np.uint8, (actor_n, FEAT_MAX_UNITS // 8))
+    return out
 
 
 def parse(data: bytes) -> BinaryObservation:

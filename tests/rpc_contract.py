@@ -1,6 +1,6 @@
 """The RPC conformance suite (docs/specs/protocol.md): every method in every lifecycle
 status, malformed input, exact error codes, exactness of `step`, the closed set of `act`
-rejection reasons. The fake server runs it in tests/unit; the DLL runs it in tests/e2e.
+rejection reasons. The DLL runs it in tests/e2e/test_rpc_contract_dll.py.
 
 Subclass with `make_client()` returning a fresh RpcClient against a server in `launched`
 status, and `players()` returning a create_game player list the server accepts.

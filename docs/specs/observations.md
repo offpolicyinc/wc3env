@@ -83,7 +83,8 @@ to player IDs. Slot IDs alone do not establish neutrality, hostility or alliance
 | `item_use` | `unit_id, type_id` |
 | `item_sold` | `unit_id` of shop, `buyer_id, type_id` |
 | `unit_sold` | `unit_id` of shop, `buyer_id, type_id` of the hired mercenary or tavern hero |
-| `attacked` | `unit_id` of victim, `attacker_id` |
+| `attacked` | `unit_id` of victim, `attacker_id` (an attack starting, before it lands) |
+| `damaged` | `unit_id` of victim, `source_id` (the unit that dealt it, 0 if hidden), `hundredths`: the damage in hundredths of hit points; every attack and spell that hits |
 
 The host wrapper adds `ticks_skipped`: `max(0, int(elapsed_seconds) - 1)` in realtime, else 0.
 

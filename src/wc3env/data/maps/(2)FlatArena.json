@@ -1,0 +1,44 @@
+{
+  "bounds": {
+    "max_x": 7424.0,
+    "max_y": 5120.0,
+    "min_x": -7424.0,
+    "min_y": -5632.0
+  },
+  "creep_camps": [],
+  "gold_mines": [],
+  "map": "(2)FlatArena.w3x",
+  "neutral_buildings": [],
+  "pathing": {
+    "cell": 32,
+    "flags": "eNrt0TEBAAAIAyATrH9cW3hMqEACAAAAAAAAALQauvj379+/f//+/fv379+/f//+/fv379+/f//+/eMf//jHP/7xj3/84x//+Mc//vGPf/zjH//4xz/+8Y9//OMf//jHP/7xj3/84x//+Mc//vGPf/zjH//4xz/+8Y9//OMf//jHv3///v379+/fv3///v379+/fv3///v379+/fv3/84x//+Mc//vGPf/zjH//4xz/+8Y9//OMf//jHP/7xj3/84x//+Mc//vGPf/zjH//4xz/+8Y9//OMf//jHP/7xj3/84x//+Pfv379///79+/fv379///79+/fv379///794x//+Mc//vGPf/zjH//4xz/+8Y9//OMf//jHP/7xj3/84x//+Mc//vGPf/zjH//4xz/+8Y9//OMf//jHP/7xj3/84x//+Me/f//+/fv379+/f//+/fv379+/f//+/fv379+/f/zjH//4xz/+8Y9//OMf//jHP/7xj3/84x//+Mc//vGPf/zjH//4xz/+8Y9//OMf//jHP/7xj3/84x//+Mc//vGPf/zjH//49+/fv3///v379+/fv3///v379+/fv3///v3jH//4xz/+8Y9//OMf//jHP/7xj3/84x//+Mc//vGPf/zjH//4xz/+8Y9//OMf//jHP/7xj3/84x//+Mc//vGPf/zjH//4x79///79+/fv379///79+/fv379///79+/fv379/Hv8DAAAAAAAAAAAAAAAAAABwawFYPoar",
+    "height": 384,
+    "origin": [
+      -8192,
+      -6144
+    ],
+    "width": 512
+  },
+  "schema_version": 2,
+  "source": {
+    "map_sha256": "e811741bdb851c44b615a0c303e16f5cb357601e766db7e6f7b7970eb3ee7329",
+    "reference_sha256": "eed851f5cfffd4999cfca7e6e810c55af7a9826ae885d38f204fc7e3d165b094"
+  },
+  "start_locations": [
+    {
+      "player": 0,
+      "x": -5184,
+      "y": 2944
+    },
+    {
+      "player": 1,
+      "x": 4672,
+      "y": 2944
+    }
+  ],
+  "trees": {
+    "type_id": [],
+    "x": [],
+    "y": []
+  }
+}

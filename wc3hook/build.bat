@@ -13,7 +13,7 @@ call "%VS_DIR%\VC\Auxiliary\Build\vcvars32.bat" >nul || exit /b 1
 cd /d "%~dp0"
 if not exist out mkdir out
 set "JSON_FLAGS=/DYYJSON_DISABLE_WRITER=1 /DYYJSON_DISABLE_UTILS=1 /DYYJSON_DISABLE_FILE=1 /DYYJSON_DISABLE_INCR_READER=1 /DYYJSON_DISABLE_NON_STANDARD=1 /DYYJSON_READER_DEPTH_LIMIT=64"
-cl /nologo /O2 /W3 /WX %JSON_FLAGS% /LD /I minhook\include main.c allocator.c transport.c clock.c step.c observe.c difficulty.c overlay.c chat.c metadata.c events.c act.c placement.c players.c setup.c instance.c diag.c rpc.c stage.c yyjson\yyjson.c minhook\src\buffer.c minhook\src\hook.c minhook\src\trampoline.c minhook\src\hde\hde32.c /Fo:out\ /Fe:out\wc3hook.dll /link ole32.lib user32.lib winmm.lib || exit /b 1
+cl /nologo /O2 /W3 /WX %JSON_FLAGS% /LD /I minhook\include main.c allocator.c transport.c clock.c step.c observe.c difficulty.c overlay.c chat.c metadata.c events.c act.c placement.c players.c setup.c instance.c diag.c rpc.c stage.c features.c masks.c yyjson\yyjson.c minhook\src\buffer.c minhook\src\hook.c minhook\src\trampoline.c minhook\src\hde\hde32.c /Fo:out\ /Fe:out\wc3hook.dll /link ole32.lib user32.lib winmm.lib || exit /b 1
 cl /nologo /O2 /W3 /WX %JSON_FLAGS% ..\tests\native\test_core.c yyjson\yyjson.c /Fo:out\ /Fe:out\test_core.exe || exit /b 1
 out\test_core.exe || exit /b 1
 if not exist ..\src\wc3env\native mkdir ..\src\wc3env\native

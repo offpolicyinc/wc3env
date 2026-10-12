@@ -34,7 +34,8 @@ COPY docker/*.sh docker/*.py tools/bench.py tools/profile_game.py tools/winproc.
 COPY --from=wheels /wheels/environment/ /opt/wheels/environment/
 # The same package for the Linux side: a trainer's VectorSession drives Wine workers from here.
 COPY src/wc3env/ /opt/host/wc3env/
-ENV DISPLAY=:99 WINEPREFIX=/home/worker/.wine WINEARCH=wow64 \
+ENV PATH=/opt/wine/bin:$PATH WINEFSYNC=1 \
+    DISPLAY=:99 WINEPREFIX=/home/worker/.wine WINEARCH=wow64 \
     WINEDLLOVERRIDES="mscoree,mshtml=" WINEDEBUG=-all \
     LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe LP_NUM_THREADS=2 \
     PYTHONUNBUFFERED=1

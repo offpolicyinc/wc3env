@@ -6,7 +6,7 @@ from pathlib import Path
 
 from wc3env import w3g
 
-FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 class W3gTest(unittest.TestCase):

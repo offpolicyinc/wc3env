@@ -3,7 +3,13 @@
  * (numpy structured arrays), as BWAPI's client reads its GameData. Every field is 4 bytes, so records
  * have no padding. src/wc3env/binary.py mirrors these layouts; change both together. */
 #pragma once
+#ifdef _WIN32
 #include <windows.h>
+#else /* the feature code (features.c, masks.c) also builds as a Linux library: training/policy/native.py */
+#include <stdint.h>
+typedef uint32_t DWORD;
+typedef uint8_t BYTE;
+#endif
 #include <stdlib.h>
 #include <string.h>
 
@@ -92,9 +98,9 @@ typedef struct {
 typedef struct {
     DWORD kind;     /* the engine event id: 20 death, 26 construct_start, ... (binary.py EVENT_KINDS) */
     DWORD unit_id;  /* the JSON event's unit_id */
-    DWORD other_id; /* trained_id, summoned_id, item_id, buyer_id or attacker_id; 0 if none or hidden */
+    DWORD other_id; /* trained_id, summoned_id, item_id, buyer_id, attacker_id or source_id; 0 if none or hidden */
     DWORD type_id;  /* type_id or ability_id; 0 if none or hidden */
-    int value;      /* death: owner; hero_level: level */
+    int value;      /* death: owner; hero_level: level; damaged: hundredths of hit points */
 } BinEvent;
 
 typedef struct {
@@ -123,7 +129,7 @@ typedef struct {
     DWORD time_ms;           /* game time when it was given */
 } BinOrder;
 
-/* src/wc3env/binary.py's dtypes have these sizes; tests/unit/test_binary.py checks its side */
+/* src/wc3env/binary.py's dtypes have these sizes */
 typedef char bin_sizes_match[sizeof(BinHeader) == 292 && sizeof(BinUnit) == 100 && sizeof(BinAbility) == 24 &&
                                      sizeof(BinBuff) == 8 && sizeof(BinQueue) == 12 && sizeof(BinInventory) == 16 &&
                                      sizeof(BinItem) == 16 && sizeof(BinDestructable) == 24 && sizeof(BinEvent) == 20 &&

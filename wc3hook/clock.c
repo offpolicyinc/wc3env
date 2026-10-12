@@ -94,6 +94,10 @@ void clock_set_speed(double s) {
     LeaveCriticalSection(&g_clock_lock);
 }
 
+/* Set while the clock runs, reset while it is frozen (manual reset: setting it releases every thread waiting on
+ * it). Waits made while frozen sleep their full length on it, so a step's start wakes them all at once. */
+static HANDLE g_running;
+
 void clock_freeze(int on) {
     EnterCriticalSection(&g_clock_lock);
     ClockAnchor a = g_anchor;
@@ -101,11 +105,15 @@ void clock_freeze(int on) {
         a.frozen_at = real_qpc();
         a.frozen = 1;
         anchor_write(&a);
+        if (g_running)
+            ResetEvent(g_running);
     } else if (!on && a.frozen) {
         reanchor(&a);
         a.frozen = 0;
         a.real0 = real_qpc();
         anchor_write(&a);
+        if (g_running)
+            SetEvent(g_running);
     }
     LeaveCriticalSection(&g_clock_lock);
 }
@@ -165,8 +173,13 @@ static void patch_rdtsc(void) {
  * wastes the whole speedup. Scale it down by the speed factor (never below a yield). */
 typedef VOID(WINAPI *SleepFn)(DWORD);
 SleepFn Sleep_orig;
+static DWORD frozen_wait(DWORD n, const HANDLE *h, BOOL all, DWORD ms, BOOL alertable);
 static VOID WINAPI Sleep_hook(DWORD ms) {
     ClockAnchor a = anchor_read(NULL);
+    if (a.frozen && ms > 0 && ms != INFINITE && g_running) {
+        frozen_wait(0, NULL, FALSE, ms, FALSE);
+        return;
+    }
     if (a.speed > 1.0 && ms > 0 && ms != INFINITE) {
         DWORD s = (DWORD)(ms / a.speed);
         Sleep_orig(s);
@@ -184,10 +197,6 @@ static DWORD scale_timeout(DWORD ms) {
     if (a.speed <= 1.0 || ms == 0 || ms == INFINITE)
         return ms;
     DWORD s = (DWORD)(ms / a.speed);
-    /* Frozen clock (between steps in step mode): a zero timeout would spin a core on a clock
-     * that does not move. One real ms per wake is enough to notice the clock start again. */
-    if (a.frozen)
-        return s ? s : 1;
     /* Below 1 ms the wait returns at once: the turn thread then spins, producing a turn per
      * 25 virtual ms as fast as the virtual clock advances, at the cost of one busy core (2.5
      * cores per game measured at 32x). A 1 ms floor caps one game at 1000 turns/s = 25x
@@ -207,6 +216,33 @@ static WFMOFn WFMO_orig;
 static WFMOExFn WFMOEx_orig;
 static SleepExFn SleepEx_orig;
 static MsgWaitFn MsgWait_orig;
+
+/* A timed wait made while the clock is frozen (between steps in step mode). Cut by the speed factor it would be
+ * ~1 ms, and every game thread would wake ~1,000 times a second to look at a clock that does not move: ~0.15 of a
+ * core per waiting game under Wine (docs/training/9-benchmarks.md). Instead it waits its full length on its own
+ * handles and on g_running, which the clock starting sets: the step's start ends it at once. The clock starting
+ * reads as a timeout (always a possible outcome of a timed wait; the caller looks at its clock again). Waits for
+ * all handles, or with no room for one more handle, keep the old 1 ms cut. */
+/* Least length of a wait made while frozen. Some game threads wait 1 ms at a time on their own (two per game, ~800
+ * wakes a second each under Wine, and each wake a wineserver round trip); g_running and the threads' own handles
+ * still end such a wait as soon as there is something to do. */
+#define FROZEN_WAIT_MIN_MS 100
+
+static int frozen_now(DWORD ms) {
+    return ms != 0 && ms != INFINITE && g_running && anchor_read(NULL).frozen;
+}
+static DWORD frozen_wait(DWORD n, const HANDLE *h, BOOL all, DWORD ms, BOOL alertable) {
+    HANDLE both[MAXIMUM_WAIT_OBJECTS];
+    if (ms < FROZEN_WAIT_MIN_MS)
+        ms = FROZEN_WAIT_MIN_MS;
+    if (all || n >= MAXIMUM_WAIT_OBJECTS)
+        return WFMOEx_orig(n, h, all, 1, alertable);
+    for (DWORD i = 0; i < n; i++)
+        both[i] = h[i];
+    both[n] = g_running;
+    DWORD r = WFMOEx_orig(n + 1, both, FALSE, ms, alertable);
+    return r == WAIT_OBJECT_0 + n ? WAIT_TIMEOUT : r;
+}
 DWORD real_wait(HANDLE event, DWORD ms) {
     return WFSO_orig(event, ms);
 }
@@ -227,7 +263,8 @@ static DWORD WINAPI WFSO_hook(HANDLE h, DWORD ms) {
     if ((BYTE *)_ReturnAddress() == g_base + RVA_FRAME_WAIT_RET && g_game_tid && GetCurrentThreadId() == g_game_tid &&
         *(BYTE **)((BYTE *)_AddressOfReturnAddress() + 16) == g_base + RVA_FRAME_LOOP_WAIT_RET) {
         rpc_service_jobs_between_frames();
-        DWORD timeout = scale_timeout(ms);
+        /* frozen: the full wait (a step's start or a posted job sets g_wake); running: cut by the speed factor */
+        DWORD timeout = frozen_now(ms) ? (ms < FROZEN_WAIT_MIN_MS ? FROZEN_WAIT_MIN_MS : ms) : scale_timeout(ms);
         if (!timeout)
             return WFSO_orig(h, 0);
         HANDLE both[2] = {h, g_wake};
@@ -237,21 +274,43 @@ static DWORD WINAPI WFSO_hook(HANDLE h, DWORD ms) {
         rpc_service_jobs_between_frames();
         return WAIT_TIMEOUT; /* the loop checks the clock again */
     }
+    if (frozen_now(ms))
+        return frozen_wait(1, &h, FALSE, ms, FALSE);
     return WFSO_orig(h, scale_timeout(ms));
 }
 static DWORD WINAPI WFSOEx_hook(HANDLE h, DWORD ms, BOOL a) {
+    if (frozen_now(ms))
+        return frozen_wait(1, &h, FALSE, ms, a);
     return WFSOEx_orig(h, scale_timeout(ms), a);
 }
 static DWORD WINAPI WFMO_hook(DWORD n, const HANDLE *h, BOOL all, DWORD ms) {
+    if (frozen_now(ms))
+        return frozen_wait(n, h, all, ms, FALSE);
     return WFMO_orig(n, h, all, scale_timeout(ms));
 }
 static DWORD WINAPI WFMOEx_hook(DWORD n, const HANDLE *h, BOOL all, DWORD ms, BOOL a) {
+    if (frozen_now(ms))
+        return frozen_wait(n, h, all, ms, a);
     return WFMOEx_orig(n, h, all, scale_timeout(ms), a);
 }
 static DWORD WINAPI SleepEx_hook(DWORD ms, BOOL a) {
+    if (frozen_now(ms)) {
+        DWORD r = frozen_wait(0, NULL, FALSE, ms, a);
+        return r == WAIT_IO_COMPLETION ? r : 0;
+    }
     return SleepEx_orig(scale_timeout(ms), a);
 }
 static DWORD WINAPI MsgWait_hook(DWORD n, const HANDLE *h, BOOL all, DWORD ms, DWORD mask) {
+    if (frozen_now(ms) && !all && n < MAXIMUM_WAIT_OBJECTS) {
+        HANDLE both[MAXIMUM_WAIT_OBJECTS];
+        for (DWORD i = 0; i < n; i++)
+            both[i] = h[i];
+        both[n] = g_running;
+        DWORD r = MsgWait_orig(n + 1, both, FALSE, ms < FROZEN_WAIT_MIN_MS ? FROZEN_WAIT_MIN_MS : ms, mask);
+        if (r == WAIT_OBJECT_0 + n)
+            return WAIT_TIMEOUT;
+        return r == WAIT_OBJECT_0 + n + 1 ? WAIT_OBJECT_0 + n : r; /* input arrived: its index without ours */
+    }
     return MsgWait_orig(n, h, all, scale_timeout(ms), mask);
 }
 static void wait_init_hooks(void) {
@@ -276,6 +335,7 @@ void clock_init_hooks(void) {
     }
     timeBeginPeriod(1);
     g_wake = CreateEventA(NULL, FALSE, FALSE, NULL);
+    g_running = CreateEventA(NULL, TRUE, TRUE, NULL); /* manual reset; the clock starts running */
     LARGE_INTEGER f;
     QueryPerformanceFrequency(&f);
     g_qpc_freq = f.QuadPart;

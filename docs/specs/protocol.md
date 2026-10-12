@@ -108,6 +108,7 @@ Test/staging API, separate from agent actions. Invalid arguments return `bad_par
 | `ai` | `player, paused` | Pause computer AI |
 | `order` | `unit_id` | Returns current executed `order_id` |
 | `invulnerable` | `player, on` | Apply to all own units now and after each step |
+| `handicap` | `player, hp, damage=1` | Its units take every hit scaled by 1/`hp` (as if `hp` of their hit points) and deal `damage` of theirs (each in (0, 1]; 1, 1 off), units made later too |
 | `alliance` | `player, other, kind` (0..9), `enabled` | Set alliance flag |
 | `destructable` | `type_id, x, y, invulnerable=0` | Create destructable; returns `id` |
 

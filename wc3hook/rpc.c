@@ -7,6 +7,7 @@
  * its hooks (the render hook every frame; the frame loop's pacing wait between steps, when no
  * frame runs). `step` starts the step and waits for step_finish to signal it. */
 #include "wc3hook.h"
+#include "features.h"
 
 /* ---- status ---------------------------------------------------------------------------------- */
 static const char *STATUS_NAMES[] = {"launched", "in_game", "ended"};
@@ -126,10 +127,27 @@ static int obs_map_ready(void) {
     g_obs_view = (BYTE *)MapViewOfFile(map, FILE_MAP_WRITE, 0, 0, OBS_MAP_BYTES);
     return g_obs_view != NULL; /* the mapping lives as long as the process */
 }
+/* The model's features of a player's observations (features.h), for the players the host asked with `features`:
+ * computed on the game thread right after the observation and written after it in the mapping. Each player's
+ * state folds in every observation written for it and the decision the host took on the one before (step's
+ * `decisions`). */
+static FeatState *g_feat[16];
+static FeatDecision g_feat_last[16];
+static int g_feat_has_last[16];
+static FeatOut g_feat_out;
+static void features_clear(void) {
+    for (int p = 0; p < 16; p++) {
+        feat_free(g_feat[p]);
+        g_feat[p] = NULL;
+        g_feat_has_last[p] = 0;
+    }
+}
+
 typedef struct {
     int n, ok;
     int players[16];
     DWORD offset[16], size[16];
+    DWORD features_offset[16], features_size[16]; /* size 0: no features for that player */
 } BinaryJob;
 static void binary_job(void *a) {
     BinaryJob *j = (BinaryJob *)a;
@@ -142,6 +160,18 @@ static void binary_job(void *a) {
         j->offset[i] = at;
         j->size[i] = size;
         at += (size + 7) & ~7u;
+        if (g_feat[p]) {
+            if (feat_step(g_feat[p], g_obs_view + j->offset[i], size, g_feat_has_last[p] ? &g_feat_last[p] : NULL,
+                          &g_feat_out))
+                return;
+            g_feat_has_last[p] = 0;
+            DWORD fsize = feat_write(&g_feat_out, g_obs_view + at, OBS_MAP_BYTES - at);
+            if (!fsize)
+                return;
+            j->features_offset[i] = at;
+            j->features_size[i] = fsize;
+            at += (fsize + 7) & ~7u;
+        }
     }
     j->ok = 1;
 }
@@ -180,6 +210,12 @@ static void write_binary(JW *w, const BinaryJob *j) {
         jw_uint(w, j->offset[i]);
         jw_key(w, "size");
         jw_uint(w, j->size[i]);
+        if (j->features_size[i]) {
+            jw_key(w, "features_offset");
+            jw_uint(w, j->features_offset[i]);
+            jw_key(w, "features_size");
+            jw_uint(w, j->features_size[i]);
+        }
         jw_close(w, '}');
     }
     jw_close(w, ']');
@@ -273,6 +309,7 @@ static void restart_job(void *a) {
     g_status = ST_LAUNCHED;
     g_mode = 0;
     memset(g_obs_seq, 0, sizeof g_obs_seq);
+    features_clear();
     step_restart();
 }
 static const char *restart_game(void) {
@@ -336,10 +373,7 @@ static void m_save_replay(JW *w, LONGLONG id, yyjson_val *params) {
 }
 static void create_job(void *a) {
     CreateJob *j = (CreateJob *)a;
-    if (game_is_replay() && j->mode != 1) {
-        strcpy(j->error, "replay playback requires stepping mode");
-        return;
-    }
+    /* a replay plays in either mode: realtime releases it to Warcraft's own clock and replay controls (to watch) */
     const char *setup_problem = setup_error();
     if (setup_problem) {
         _snprintf(j->error, sizeof j->error, "%s", setup_problem);
@@ -373,6 +407,7 @@ static void create_job(void *a) {
         return;
     }
     memset(g_obs_seq, 0, sizeof g_obs_seq);
+    features_clear();
     events_set_players(j->players);
     g_mode = j->mode;
     g_status = ST_IN_GAME;
@@ -552,6 +587,35 @@ static void free_acts(ActJobs *a) {
         free(a->jobs[k].items);
 }
 
+/* step's `decisions`: {"<player>": {"type": t, "actor": id, "target": id, "x": x, "y": y}} (actor, target, x and y
+ * optional): what the host decided on the player's last observation, folded into its next features */
+static const char *step_decisions(yyjson_val *d) {
+    if (!d)
+        return NULL;
+    if (!yyjson_is_obj(d))
+        return "decisions must be an object of player slots";
+    size_t i, max;
+    yyjson_val *key, *val;
+    yyjson_obj_foreach(d, i, max, key, val) {
+        const char *name = yyjson_get_str(key);
+        int p = name ? atoi(name) : -1;
+        LONGLONG type, actor = 0, target = 0;
+        double x = 0, y = 0;
+        if (p < 0 || p >= 16 || !yyjson_is_obj(val) || !jr_is_int(yyjson_obj_get(val, "type"), &type))
+            return "decisions[player] must be an object with an integer type";
+        yyjson_val *ax = yyjson_obj_get(val, "x"), *ay = yyjson_obj_get(val, "y");
+        if ((yyjson_obj_get(val, "actor") && !jr_is_int(yyjson_obj_get(val, "actor"), &actor)) ||
+            (yyjson_obj_get(val, "target") && !jr_is_int(yyjson_obj_get(val, "target"), &target)) ||
+            (ax && !jr_is_num(ax, &x)) || (ay && !jr_is_num(ay, &y)) || (!ax != !ay))
+            return "decisions[player]: actor and target are unit ids, x and y numbers given together";
+        g_feat_last[p].type = (int)type;
+        g_feat_last[p].actor = (DWORD)actor, g_feat_last[p].target = (DWORD)target;
+        g_feat_last[p].has_point = ax != NULL, g_feat_last[p].x = x, g_feat_last[p].y = y;
+        g_feat_has_last[p] = 1;
+    }
+    return NULL;
+}
+
 static void m_step(JW *w, LONGLONG id, yyjson_val *params) {
     LONGLONG ms;
     ActJobs acts = {0};
@@ -569,6 +633,11 @@ static void m_step(JW *w, LONGLONG id, yyjson_val *params) {
         return;
     }
     const char *invalid = binary_list(yyjson_obj_get(params, "observe"), &g_step_binary);
+    if (invalid) {
+        reply_error(w, id, "bad_params", invalid);
+        return;
+    }
+    invalid = step_decisions(yyjson_obj_get(params, "decisions"));
     if (invalid) {
         reply_error(w, id, "bad_params", invalid);
         return;
@@ -643,6 +712,75 @@ static int player_param(yyjson_val *params, int required, LONGLONG *out) {
         return 1;
     }
     return jr_is_int(p, out) && *out >= 0 && *out < 16;
+}
+
+/* base64 text into out (exactly n bytes); 0 if it is not that */
+static int base64_bytes(const char *text, size_t length, BYTE *out, size_t n) {
+    static const char ABC[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    size_t got = 0;
+    unsigned bits = 0, have = 0;
+    for (size_t i = 0; i < length && text[i] != '='; i++) {
+        const char *c = strchr(ABC, text[i]);
+        if (!c || !text[i])
+            return 0;
+        bits = (bits << 6) | (unsigned)(c - ABC), have += 6;
+        if (have >= 8) {
+            have -= 8;
+            if (got == n)
+                return 0;
+            out[got++] = (BYTE)(bits >> have);
+        }
+    }
+    return got == n;
+}
+
+/* features: from now on, write the model's features after each of this player's binary observations.
+ * params: player, bounds [min_x, min_y, max_x, max_y], races [own, opponent's] (0 human, 1 orc, 2 undead,
+ * 3 night elf), trees: the map's starting trees per cell, MAP * MAP counts as bytes in base64. A new game drops
+ * it. */
+static void m_features(JW *w, LONGLONG id, yyjson_val *params) {
+    static FeatStatic s;
+    LONGLONG player, race;
+    yyjson_val *bounds = yyjson_obj_get(params, "bounds"), *races = yyjson_obj_get(params, "races");
+    yyjson_val *trees = yyjson_obj_get(params, "trees");
+    if (g_status != ST_IN_GAME) {
+        reply_error(w, id, "bad_status", STATUS_ERR("features"));
+        return;
+    }
+    if (!player_param(params, 1, &player) || !yyjson_is_arr(bounds) || yyjson_arr_size(bounds) != 4 ||
+        !yyjson_is_arr(races) || yyjson_arr_size(races) != 2 || !yyjson_is_str(trees)) {
+        reply_error(w, id, "bad_params", "features takes player, bounds[4], races[2] and trees (base64)");
+        return;
+    }
+    for (int k = 0; k < 4; k++)
+        if (!jr_is_num(yyjson_arr_get(bounds, k), &s.bounds[k])) {
+            reply_error(w, id, "bad_params", "bounds must be numbers");
+            return;
+        }
+    for (int k = 0; k < 2; k++) {
+        if (!jr_is_int(yyjson_arr_get(races, k), &race) || race < 0 || race > 3) {
+            reply_error(w, id, "bad_params", "races must be 0..3");
+            return;
+        }
+        s.races[k] = (int)race;
+    }
+    static BYTE counts[FEAT_MAP * FEAT_MAP];
+    if (!base64_bytes(yyjson_get_str(trees), yyjson_get_len(trees), counts, sizeof counts)) {
+        reply_error(w, id, "bad_params", "trees must be 128 * 128 bytes in base64");
+        return;
+    }
+    for (int k = 0; k < FEAT_MAP * FEAT_MAP; k++)
+        s.trees[k] = counts[k];
+    feat_free(g_feat[player]);
+    g_feat[player] = feat_new(&s);
+    g_feat_has_last[player] = 0;
+    reply_head(w, id, 1);
+    jw_key(w, "result");
+    jw_open(w, '{');
+    jw_key(w, "player");
+    jw_int(w, (int)player);
+    jw_close(w, '}');
+    jw_close(w, '}');
 }
 
 static void m_observe(JW *w, LONGLONG id, yyjson_val *params) {
@@ -970,6 +1108,8 @@ void rpc_handle(const char *line) {
                 m_step(&w, id, params);
             else if (strcmp(method, "observe") == 0)
                 m_observe(&w, id, params);
+            else if (strcmp(method, "features") == 0)
+                m_features(&w, id, params);
             else if (strcmp(method, "act") == 0)
                 m_act(&w, id, params);
             else if (strcmp(method, "debug") == 0)

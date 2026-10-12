@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 child_pid=''
-Xvfb "$DISPLAY" -screen 0 1024x768x24 -nolisten tcp >/tmp/xvfb.log 2>&1 &
+# -maxclients: 64 games hold all of Xvfb's default 256 connections, and a game that cannot connect never starts
+Xvfb "$DISPLAY" -screen 0 1024x768x24 -nolisten tcp -maxclients 2048 >/tmp/xvfb.log 2>&1 &
 display_pid=$!
 cleanup() {
     if [ -n "$child_pid" ]; then kill "$child_pid" 2>/dev/null || true; fi

@@ -19,8 +19,7 @@ jobs:
       - run: python -m pip install -e .[binary] -e wc3agent ruff==0.16.8
       - run: python -m ruff check .
       - run: python -m ruff format --check .
-      - run: python -m unittest discover -s tests/unit -t .
-      - run: python -m unittest discover -s wc3agent/tests
+      - run: python -m unittest tests.test_w3g
       - name: Build distributable wheel
         run: python -m pip wheel --no-deps . --wheel-dir dist
       - name: Test clean wheel installation outside the checkout

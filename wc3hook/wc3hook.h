@@ -287,6 +287,7 @@ typedef const char *(*StageOp)(yyjson_val *args, JW *w); /* game thread: NULL, o
 StageOp stage_op(const char *name);
 void stage_each_step(void);
 void stage_clear(void);
+void handicap_damage(BYTE *victim, BYTE *source, float *damage);
 int handle_of(BYTE *obj); /* game thread: the object's JASS handle, allocated if it has none */
 
 /* ---- instance.c ------------------------------------------------------------------------------- */

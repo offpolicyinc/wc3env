@@ -10,6 +10,7 @@ The transport is anything with `send(line)` and `readline()`: `HookPipe` for the
 
 from __future__ import annotations
 
+import base64
 import json
 import math
 import threading
@@ -141,16 +142,33 @@ class RpcClient:
     def create_game(self, map: str, players: list[dict], mode: str = "stepping") -> dict:
         return self.call("create_game", map=map, players=players, mode=mode)
 
-    def step(self, ms: int, observe: list[int] | None = None, actions: dict[int, list[dict]] | None = None) -> dict:
+    def step(
+        self,
+        ms: int,
+        observe: list[int] | None = None,
+        actions: dict[int, list[dict]] | None = None,
+        decisions: dict[int, dict] | None = None,
+    ) -> dict:
         """Advance ms; with `observe`, also write those players' binary observations (binary.py) and
         return their offsets in `observations`; with `actions` ({player: [action, ...]}), first send them as act
-        would, their acknowledgements in `acts` ({"player": {rejected, placements}}): one round trip."""
+        would, their acknowledgements in `acts` ({"player": {rejected, placements}}): one round trip. `decisions`
+        ({player: {type, actor, target, x, y}}): what was decided on each player's last observation, for the
+        features the hook computes (features())."""
         params: dict = {"ms": ms}
         if observe:
             params["observe"] = observe
         if actions:
             params["actions"] = {str(p): batch for p, batch in actions.items()}
+        if decisions:
+            params["decisions"] = {str(p): d for p, d in decisions.items()}
         return self.call("step", **params)
+
+    def features(self, player: int, bounds: list[float], races: list[int], trees: bytes) -> dict:
+        """From now on, write the model's features (binary.parse_features) after this player's binary
+        observations: bounds [min_x, min_y, max_x, max_y], races [own, opponent's] (0 human, 1 orc, 2 undead,
+        3 night elf), trees: the map's starting trees per cell, 128 x 128 counts as bytes. A new game drops it."""
+        return self.call("features", player=player, bounds=bounds, races=races,
+                         trees=base64.b64encode(trees).decode("ascii"))  # fmt: skip
 
     def reset(self) -> dict:
         return self.call("reset")

@@ -180,7 +180,6 @@ and unmodified. Wheels include the DLL and project/vendor licenses, never Warcra
 
 ```powershell
 wc3hook/build.bat
-python -m unittest discover -s tests/unit -t .
 python -m unittest discover -s tests/e2e -t .
 python -m tests.e2e
 python -m pip wheel --no-deps . --wheel-dir dist

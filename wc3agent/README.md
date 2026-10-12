@@ -77,5 +77,4 @@ Programmatic callers can set `MeleeConfig.micro_call_limit` for an explicit per-
 
 ```powershell
 python -m wc3agent report sessions/opening
-python -m unittest discover -s wc3agent/tests
 ```

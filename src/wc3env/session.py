@@ -83,6 +83,9 @@ class GameConfig:
     # taken in the step's own round trip; computer players are not observed. Needs numpy. "json": dictionaries
     # for every configured player (the default).
     observation: str = "json"
+    # {agent slot: {"bounds", "races", "trees"}} (rpc.features): the hook also computes the model's features for
+    # those slots' binary observations (BinaryObservation.features); step's `decisions` feed them
+    features: dict | None = None
 
     def __post_init__(self):
         if self.map is not None and (not isinstance(self.map, str) or not self.map.strip()):
@@ -98,6 +101,8 @@ class GameConfig:
             raise ValueError("mode must be stepping or realtime")
         if self.observation not in OBSERVATIONS:
             raise ValueError("observation must be json or binary")
+        if self.features and (self.observation != "binary" or not set(self.features) <= set(self.agent_slots)):
+            raise ValueError("features need binary observations, for agent slots")
         if self.window_mode not in ("interactive", "background"):
             raise ValueError("window_mode must be interactive or background")
         if type(self.render) is not bool:
@@ -291,6 +296,14 @@ class GameSession:
                 if created:
                     for op, args in self._tuning.items():
                         game.rpc.debug(op, **args)
+                startup = getattr(game, "startup", {})
+                if str(game.map).lower().endswith(".w3g"):  # a replay plays back under the handicap its game had
+                    if startup.get("handicap"):
+                        game.rpc.debug("handicap", **startup["handicap"])
+                else:  # a new episode: its own handicap, if staged, goes with its replay (debug)
+                    startup.pop("handicap", None)
+                for slot, spec in (self.config.features or {}).items():
+                    game.rpc.features(slot, **spec)
                 observations = self._observe_all()
                 self._episodes_in_process += 1
                 return observations
@@ -301,9 +314,10 @@ class GameSession:
                 raise
 
     def step(
-        self, actions: dict[int, list[Action] | list[dict]], ms: int | None = None
+        self, actions: dict[int, list[Action] | list[dict]], ms: int | None = None, decisions: dict | None = None
     ) -> tuple[dict[int, dict], bool, dict]:
-        """Send every player's batch, then advance the game by `ms` (default `config.step_ms`) in stepping mode."""
+        """Send every player's batch, then advance the game by `ms` (default `config.step_ms`) in stepping mode.
+        `decisions` (stepping, GameConfig.features): {slot: {type, actor, target, x, y}} for the hook's features."""
         step_ms = self.config.step_ms if ms is None else ms
         if type(step_ms) is not int or not 25 <= step_ms <= 60000 or step_ms % 25:
             raise ValueError("ms must be a multiple of 25 in 25..60000")
@@ -359,7 +373,8 @@ class GameSession:
                         sent = {p: [a.to_dict() for a in batch] for p, batch in batches.items() if batch}
                         try:
                             observe = list(self.config.agent_slots) if self.config.observation == "binary" else None
-                            step_result = rpc.step(step_ms, observe=observe, actions=sent)
+                            extra = {"decisions": decisions} if decisions else {}  # the plain step is unchanged
+                            step_result = rpc.step(step_ms, observe=observe, actions=sent, **extra)
                             for p, acknowledgement in step_result.get("acts", {}).items():
                                 rejected[int(p)] = acknowledgement["rejected"]
                                 placements[int(p)] = acknowledgement.get("placements", [])
@@ -408,7 +423,12 @@ class GameSession:
             from .binary import SharedObservations
 
             self._shared = SharedObservations(self.game.pid)
-        return {o["player"]: self._shared.read(o["offset"], o["size"]) for o in located}
+        return {
+            o["player"]: self._shared.read(
+                o["offset"], o["size"], (o["features_offset"], o["features_size"]) if "features_size" in o else None
+            )
+            for o in located
+        }
 
     def _publish(self, observations: dict) -> dict:
         self.observations = observations
@@ -436,12 +456,15 @@ class GameSession:
         with self._lock:
             with self._state_lock:
                 self._check_open()
-            return self.game.rpc.debug(op, **args)
+            result = self.game.rpc.debug(op, **args)
+            if op == "handicap":  # not in the replay itself: kept with its startup, for playback (save_replay)
+                self.game.startup["handicap"] = dict(args)
+            return result
 
     def save_replay(self, path: str | Path) -> Path:
         """Save the current episode's native Warcraft replay (.w3g). Call it once, when the episode is over:
         recording stops, and debug staging is not part of a replay. A staged game's startup options (match
-        setup, AI difficulty, AI slots) go next to it (`<name>.w3g.json`), where launching the replay finds them."""
+        setup, AI difficulty, AI slots, a handicap) go next to it (`<name>.w3g.json`), where launching the replay finds them."""
         from .game import replay_startup_path
 
         target = Path(path).expanduser().absolute()

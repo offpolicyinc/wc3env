@@ -5,11 +5,16 @@ doodads go; the pathing grid is open inside the playable area; and the script no
 map's preplaced units (creeps, gold mines, shops). Start locations and melee setup stay, so each
 player still starts with a town hall and workers at its start location.
 
-    python -m tools.prepare.arena            # writes build/maps/(2)FlatArena.w3x
+    python -m tools.prepare.arena            # writes build/maps/(2)FlatArena.w3x and its map data
+
+The map data (src/wc3env/data/maps/(2)FlatArena.json, as `python -m tools.prepare map` writes for stock maps) is
+Echo Isles' with the arena's open pathing and nothing placed: no trees, mines, camps or shops; the same bounds and
+start locations. The self-play policy's features read it (training/policy/features.py Static, combat fights).
 """
 
 from __future__ import annotations
 
+import json
 import re
 import shutil
 import struct
@@ -17,6 +22,8 @@ import sys
 import tempfile
 from pathlib import Path
 
+from .artifacts import digest, write_json
+from .mapinfo import grid_origin, pathing
 from .mpq import Archive
 
 SOURCE = "(2)EchoIsles.w3x"
@@ -99,12 +106,28 @@ def build(source: Path, output: Path) -> Path:
     return output
 
 
+def map_data(output: Path) -> Path:
+    """The arena's map data, beside Echo Isles' (see the module's docstring)."""
+    from wc3env.data import MAPS
+
+    data = json.loads((MAPS / "(2)EchoIsles.json").read_text(encoding="utf-8"))
+    with Archive(output) as archive:
+        grid = pathing(archive.read("war3map.wpm"), grid_origin(archive.read("war3map.w3e")))
+    data.update(map=output.name, pathing=grid, trees={"type_id": [], "x": [], "y": []}, gold_mines=[], creep_camps=[],
+                neutral_buildings=[])  # fmt: skip
+    data["source"] = {**data["source"], "map_sha256": digest(output)}
+    target = MAPS / f"{output.stem}.json"
+    write_json(target, data)
+    return target
+
+
 def main():
     from wc3env.settings import settings
 
     source = settings().game_dir / "Maps" / "FrozenThrone" / SOURCE
     output = Path(sys.argv[1]) if len(sys.argv) > 1 else OUTPUT
     print(build(source, output))
+    print(map_data(output))
 
 
 if __name__ == "__main__":

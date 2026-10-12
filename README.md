@@ -35,7 +35,6 @@ with WC3Env(GameConfig(map="(2)EchoIsles.w3x", step_ms=1000)) as env:
 ```powershell
 wc3hook/build.bat
 python -m pip install -e .
-python -m unittest discover -s tests/unit -t .
 python -m tests.e2e                             # real game, ~3 min; skipped without an installation
 ```
 

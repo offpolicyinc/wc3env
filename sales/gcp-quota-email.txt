@@ -1,0 +1,33 @@
+Status: submitted 2026-10-04 through the Google Cloud contact form (Sales), project wc3env-pw. Waiting for a reply.
+
+Subject: Quota increase request for project wc3env-pw (CPUs and L4/T4 GPUs)
+
+Hello,
+
+I'm running a research project on Google Cloud (project ID: wc3env-pw) that trains a game-playing AI with
+reinforcement learning, and the automated quota reviews have denied my increase requests. I'd like a manual
+review of the following:
+
+- CPUs (all regions): 128 -> 256
+- T2D CPUs, us-central1: 24 -> 128
+- T2D CPUs, us-west1: 100 -> 128
+- NVIDIA L4 GPUs, us-central1: 1 -> 4
+- NVIDIA L4 GPUs, us-west1: 0 -> 4
+- NVIDIA T4 GPUs, us-central1: 1 -> 4
+- NVIDIA T4 GPUs, us-west1: 0 -> 4
+- GPUs (all regions): 1 -> 8
+
+The workload:
+
+- Batch game simulations on CPU-only VMs (T2D/C2D, 8 vCPUs each) that run for a few hours and delete
+  themselves when finished. We already use the full 128 vCPUs and are limited by it.
+- Small GPUs (L4/T4) to run the neural network that plays those games, and for evaluation.
+- All VMs are on-demand, have no public IPs (Cloud NAT), and have a maximum run time set.
+- Spend is controlled by a monthly budget with alerts on the project; I expect a few hundred dollars a month
+  at the higher quota.
+
+I'm happy to provide more detail or to start with smaller increases.
+
+Thank you,
+<your name>
+peterwang724@gmail.com

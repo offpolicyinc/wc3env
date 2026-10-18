@@ -36,6 +36,7 @@ import pickle
 import queue
 import shutil
 import socket
+import ssl
 import struct
 import subprocess
 import sys
@@ -170,14 +171,19 @@ HELLO = b""  # what a listener sends on each connection it carries (dial_worker
 
 def dial_workers(address: str, give_up: float = 600.0) -> Launch:
     """Workers on another machine that listens at `address` (python -m wc3env.vector --listen ...), one
-    connection each, opened from here; retried until it answers, for up to `give_up` seconds."""
-    host, port = address.rsplit(":", 1)
+    connection each, opened from here; retried until it answers, for up to `give_up` seconds. `tls://host:port`:
+    over TLS (an encrypted tunnel in front of the listener, which itself speaks plain TCP)."""
+    tls = address.startswith("tls://")
+    host, port = address.removeprefix("tls://").rsplit(":", 1)
+    context = ssl.create_default_context() if tls else None
 
     def launch(worker: int) -> RemoteWorker:
         began = time.time()
         while True:
             try:
                 conn = socket.create_connection((host, int(port)), timeout=30)
+                if context is not None:
+                    conn = context.wrap_socket(conn, server_hostname=host)
                 # the listener's hello: a tunnel in front of it (Modal's) accepts a connection before anything listens
                 # behind it, then closes it (cbe05: every actor's first reset failed while the bridges set up Wine)
                 if conn.recv(1) == HELLO:

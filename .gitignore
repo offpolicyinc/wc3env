@@ -29,3 +29,11 @@ wc3hook/out/
 tests/e2e/out/
 tests/e2e/extended/out/
 tests/e2e/out_*.log
+training/native/out/
+
+# Checkpoints stay local (large); only the index is tracked
+checkpoints/*
+!checkpoints/README.md
+
+# Third-party papers and their supplementary data stay local
+docs/papers/

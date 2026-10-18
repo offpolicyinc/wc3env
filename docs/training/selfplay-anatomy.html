@@ -1,0 +1,419 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Self-Play Anatomy</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --bg:#F3F4F1; --surface:#FFFFFF; --ink:#1C232A; --muted:#5E6872; --rule:#D6DAD4;
+  --cpu:#9A600F; --cpu-soft:#F7EDDC; --gpu:#2C5BA0; --gpu-soft:#E4ECF8; --net:#7A848C;
+  --warn:#B03A2E; --warn-soft:#F8E4E1; --good:#2E7D4F;
+  --display:"Archivo","Helvetica Neue",Arial,sans-serif;
+  --body:"IBM Plex Sans","Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"Cascadia Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --bg:#12161A; --surface:#1A2026; --ink:#E6E9EC; --muted:#9AA4AD; --rule:#2E363E;
+    --cpu:#E3A64F; --cpu-soft:#35291A; --gpu:#86ABEA; --gpu-soft:#1C2A40; --net:#8E989F;
+    --warn:#F08A7C; --warn-soft:#3A1F1C; --good:#6CC08E;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --bg:#12161A; --surface:#1A2026; --ink:#E6E9EC; --muted:#9AA4AD; --rule:#2E363E;
+  --cpu:#E3A64F; --cpu-soft:#35291A; --gpu:#86ABEA; --gpu-soft:#1C2A40; --net:#8E989F;
+  --warn:#F08A7C; --warn-soft:#3A1F1C; --good:#6CC08E;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 var(--body);padding:0 20px}
+main{max-width:1040px;margin:0 auto;padding-block:40px 64px;display:grid;gap:56px}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.15}
+h1{font-size:clamp(30px,5vw,44px);font-weight:800;letter-spacing:-.01em}
+h2{font-size:24px;font-weight:700}
+h3{font-size:16px;font-weight:700}
+p{margin:0}
+.eyebrow{font:500 12px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.lede{color:var(--muted);font-size:16px}
+section{display:grid;gap:18px}
+.head{display:grid;gap:8px}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.key{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:13px;color:var(--muted)}
+.key span{display:inline-flex;align-items:center;gap:7px}
+.sw{width:14px;height:14px;border-radius:3px;border:2px solid}
+.sw.cpu{border-color:var(--cpu);background:var(--cpu-soft)}
+.sw.gpu{border-color:var(--gpu);background:var(--gpu-soft)}
+.sw.net{border-color:var(--net);border-style:dashed}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:20px}
+/* schematic */
+.schem svg{display:block;width:100%;min-width:780px;height:auto}
+.schem text{font-family:var(--body);fill:var(--ink)}
+.schem .t-title{font-family:var(--display);font-weight:700;font-size:15px}
+.schem .t-small{font-size:12.5px;fill:var(--muted)}
+.schem .t-num{font-family:var(--mono);font-size:12.5px}
+.schem .t-label{font-size:12px;fill:var(--muted)}
+.b-cpu{fill:var(--cpu-soft);stroke:var(--cpu);stroke-width:2}
+.b-gpu{fill:var(--gpu-soft);stroke:var(--gpu);stroke-width:2}
+.b-box{fill:var(--surface);stroke:var(--ink);stroke-width:1.5}
+.b-ghost{fill:var(--surface);stroke:var(--cpu);stroke-width:1.2;opacity:.55}
+.a-net{stroke:var(--net);stroke-width:2;stroke-dasharray:6 5;fill:none}
+.a-in{stroke:var(--ink);stroke-width:1.6;fill:none}
+.ah{fill:var(--ink)} .ah-net{fill:var(--net)}
+/* cycle */
+.cycle{list-style:none;margin:0;padding:0;display:grid;gap:0;counter-reset:s}
+.cycle li{display:grid;grid-template-columns:34px 1fr auto;gap:4px 14px;align-items:baseline;padding:12px 0;border-top:1px solid var(--rule)}
+.cycle li:last-child{border-bottom:1px solid var(--rule)}
+.cycle li::before{counter-increment:s;content:counter(s);font:500 13px var(--mono);color:var(--muted)}
+.cycle .where{grid-column:2;font-size:13px;color:var(--muted)}
+.cycle .what{grid-column:2;grid-row:1}
+.cycle .t{grid-column:3;grid-row:1 / span 2;font:500 14px var(--mono);text-align:right;white-space:nowrap}
+.tag{display:inline-block;font:500 11px/1 var(--mono);letter-spacing:.04em;padding:3px 6px;border-radius:4px;margin-right:6px;vertical-align:1px}
+.tag.cpu{color:var(--cpu);background:var(--cpu-soft)}
+.tag.gpu{color:var(--gpu);background:var(--gpu-soft)}
+.tag.net{color:var(--net);border:1px dashed var(--net)}
+/* tables */
+table{border-collapse:collapse;width:100%;min-width:720px;font-size:14px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{font:600 12px var(--mono);letter-spacing:.05em;text-transform:uppercase;color:var(--muted);border-bottom:1.5px solid var(--ink)}
+td.n{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+/* bars */
+.bars{display:grid;gap:12px}
+.bar{display:grid;grid-template-columns:minmax(150px,240px) 1fr;gap:12px;align-items:center}
+.bar .lab{font-size:13.5px;line-height:1.3}
+.bar .lab small{display:block;color:var(--muted);font-size:12px}
+.track{position:relative;height:26px;background:transparent;border-left:1.5px solid var(--ink)}
+.fill{height:100%;border-radius:0 4px 4px 0;display:flex;align-items:center;justify-content:flex-end}
+.fill span{font:500 12.5px var(--mono);padding:0 8px;white-space:nowrap}
+.fill.cpu{background:var(--cpu-soft);border:1.5px solid var(--cpu);border-left:0}
+.fill.gpu{background:var(--gpu-soft);border:1.5px solid var(--gpu);border-left:0}
+.fill.real{background:var(--warn-soft);border:1.5px solid var(--warn);border-left:0}
+.fill.out span{position:absolute;left:calc(var(--w) + 6px)}
+.grid-ticks{display:grid;grid-template-columns:minmax(150px,240px) 1fr;gap:12px;font:12px var(--mono);color:var(--muted)}
+.ticks{position:relative;height:16px}
+.ticks span{position:absolute;transform:translateX(-50%)}
+.ticks span:first-child{transform:none}
+.callout{border-left:3px solid var(--warn);padding:10px 14px;background:var(--warn-soft);border-radius:0 8px 8px 0;font-size:14px;max-width:none}
+/* update bar */
+.ubar{display:flex;height:40px;border-radius:6px;overflow:hidden;border:1.5px solid var(--ink)}
+.ubar div{display:flex;align-items:center;padding:0 10px;font:500 12.5px var(--mono);white-space:nowrap;overflow:hidden}
+.ubar .c{background:var(--cpu-soft);color:var(--cpu);border-right:1.5px solid var(--ink)}
+.ubar .g{background:var(--gpu-soft);color:var(--gpu)}
+.steps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.step{background:var(--surface);border:1px solid var(--rule);border-top:3px solid var(--gpu);border-radius:6px;padding:12px 14px;display:grid;gap:4px;align-content:start}
+.step.c{border-top-color:var(--cpu)}
+.step b{font-family:var(--display);font-size:14.5px}
+.step p{font-size:13.5px;color:var(--muted)}
+.two{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:6px 16px;font-size:14px;margin:0}
+.facts dt{font-family:var(--mono);font-size:13px;color:var(--muted);white-space:nowrap}
+.facts dd{margin:0}
+.open{margin:0;padding-left:20px;display:grid;gap:6px}
+.open li,.facts dd,.facts dt,.cycle .what,.cycle .where,td,th,p{white-space:nowrap}
+p{overflow-x:auto}
+main>*,section>*,.head>*{min-width:0}
+/* timeline */
+.tl svg{display:block;width:100%;min-width:720px;height:auto}
+.tl text{font-family:var(--body);fill:var(--ink)}
+.tl .t-title{font-family:var(--display);font-weight:700;font-size:14px}
+.tl .t-small{font-size:12px;fill:var(--muted)}
+.tl .t-num{font-family:var(--mono);font-size:11.5px}
+.s-cpu{fill:var(--cpu-soft);stroke:var(--cpu);stroke-width:1.5}
+.s-gpu{fill:var(--gpu-soft);stroke:var(--gpu);stroke-width:1.5}
+.s-idle{fill:none;stroke:var(--rule);stroke-width:1.5;stroke-dasharray:4 4}
+.lane-rule{stroke:var(--rule);stroke-width:1}
+footer{color:var(--muted);font-size:13px;border-top:1px solid var(--rule);padding-top:16px}
+@media (max-width:560px){
+  .bar,.grid-ticks{grid-template-columns:1fr}
+  .grid-ticks div:first-child{display:none}
+  .cycle li{grid-template-columns:26px 1fr}
+  .cycle .t{grid-column:2;grid-row:auto;text-align:left}
+  .open li,.facts dd,.cycle .what,.cycle .where{white-space:normal}
+}
+</style>
+</head>
+<body>
+<main>
+  <header class="head">
+    <div class="eyebrow">wc3env · training branch · 2026-10-08 · measured in run sp24 unless marked offline</div>
+    <h1>Self-Play Anatomy</h1>
+    <p class="lede">How self-play works now: what runs where, how long each part takes, what limits speed and cost.<br>How it got here, run by run: 9-benchmarks.md.</p>
+  </header>
+
+  <!-- 1. Overview -->
+  <section>
+    <div class="head">
+      <div class="eyebrow">1 · Overview</div>
+      <h2>Two kinds of machine, joined by tunnels</h2>
+      <p>Games run under Wine in 8 CPU sandboxes; the game hook turns each game's state into model inputs, in C.<br>One container with two H100s decides and learns: 16 actors on its CPU,<br>2 inference processes on GPU 1, the learner on GPU 0.<br>Today: <span class="num">~7,000–7,300</span> steps/s from 512 games, the learner keeping up.</p>
+    </div>
+    <div class="key"><span><i class="sw cpu"></i>CPU work</span><span><i class="sw gpu"></i>GPU work</span><span><i class="sw net"></i>network</span></div>
+    <div class="panel schem scroll">
+      <svg viewBox="0 0 1000 540" role="img" aria-label="Schematic: 8 sandboxes of Wine games connect through TCP tunnels to a container holding 16 actors, two inference processes on GPU 1 and the learner on GPU 0">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah"/></marker>
+          <marker id="ahn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="ah-net"/></marker>
+        </defs>
+        <!-- sandboxes -->
+        <text x="20" y="62" class="t-title">SANDBOXES × 8</text>
+        <text x="20" y="82" class="t-small">Modal sandboxes, Wine, all in the US</text>
+        <rect x="44" y="104" width="226" height="300" rx="8" class="b-ghost"/>
+        <rect x="32" y="116" width="226" height="300" rx="8" class="b-ghost"/>
+        <rect x="20" y="128" width="226" height="300" rx="8" class="b-cpu"/>
+        <text x="38" y="160" class="t-title">One sandbox</text>
+        <text x="38" y="190">64 Warcraft III games</text>
+        <text x="38" y="212" class="t-small">2 actors' worth (32 each)</text>
+        <text x="38" y="246" class="t-num">7 ms CPU</text>
+        <text x="38" y="266" class="t-small">per game step</text>
+        <text x="38" y="296" class="t-small">the hook: tokens + masks</text>
+        <text x="38" y="316" class="t-num">~0.1 ms per player (C)</text>
+        <text x="38" y="350" class="t-num">~9–11 cores, 25.6 GiB</text>
+        <text x="38" y="370" class="t-small">cores estimated; memory requested</text>
+        <text x="38" y="406" class="t-small">1 step = 250 ms of game time</text>
+
+        <!-- tunnel -->
+        <path d="M262 214 H452" class="a-net" marker-end="url(#ahn)"/>
+        <text x="282" y="202" class="t-label">observation + features</text>
+        <text x="282" y="236" class="t-num">~6 KB compressed</text>
+        <path d="M452 322 H262" class="a-net" marker-end="url(#ahn)"/>
+        <text x="282" y="310" class="t-label">commands + decision</text>
+        <text x="282" y="268" class="t-small">TCP tunnel, one per actor</text>
+        <text x="282" y="288" class="t-num">~14 ms (us-east)</text>
+
+        <!-- container -->
+        <rect x="460" y="30" width="520" height="490" rx="12" class="b-box"/>
+        <text x="482" y="62" class="t-title">GPU CONTAINER</text>
+        <text x="482" y="82" class="t-small">Modal function · 48 CPU cores · 2× H100 80 GB</text>
+
+        <rect x="482" y="104" width="230" height="250" rx="8" class="b-cpu"/>
+        <text x="498" y="134" class="t-title">ACTORS × 16</text>
+        <text x="498" y="156" class="t-small">CPU only, 1 thread each</text>
+        <text x="498" y="186">32 games each</text>
+        <text x="498" y="210" class="t-small">read the features block,</text>
+        <text x="498" y="230" class="t-small">send the model's inputs</text>
+        <text x="498" y="260" class="t-small">choices → game commands</text>
+        <text x="498" y="284" class="t-small">record the learning side</text>
+        <text x="498" y="304" class="t-small">in 64-step chunks</text>
+        <text x="498" y="336" class="t-num">~6 ms / 32 games</text>
+
+        <rect x="752" y="104" width="208" height="190" rx="8" class="b-gpu"/>
+        <text x="768" y="134" class="t-title">INFERENCE × 2</text>
+        <text x="768" y="156" class="t-small">2 processes on GPU 1</text>
+        <text x="768" y="186">model + 10 heads + critic</text>
+        <text x="768" y="210" class="t-small">even actors → 0, odd → 1</text>
+        <text x="768" y="230" class="t-small">batch: what came in 2 ms</text>
+        <text x="768" y="262" class="t-num">~6 ms / ~46 games</text>
+        <text x="768" y="282" class="t-small">compiled, one CUDA graph</text>
+
+        <rect x="752" y="370" width="208" height="130" rx="8" class="b-gpu"/>
+        <text x="768" y="400" class="t-title">LEARNER</text>
+        <text x="768" y="422" class="t-small">PPO alone on GPU 0</text>
+        <text x="768" y="446">1 update / 128 chunks</text>
+        <text x="768" y="468" class="t-num">~0.62 s of work</text>
+        <text x="768" y="488" class="t-num">then waits for chunks</text>
+
+        <!-- container arrows -->
+        <path d="M712 164 H748" class="a-in" marker-end="url(#ah)"/>
+        <text x="716" y="154" class="t-label">inputs</text>
+        <path d="M748 248 H712" class="a-in" marker-end="url(#ah)"/>
+        <text x="714" y="268" class="t-label">choices</text>
+        <path d="M597 354 V436 H748" class="a-in" marker-end="url(#ah)"/>
+        <text x="610" y="426" class="t-label">64-step chunks</text>
+        <path d="M856 370 V298" class="a-in" marker-end="url(#ah)"/>
+        <text x="864" y="340" class="t-label">weights</text>
+        <text x="864" y="356" class="t-label">every 1 s</text>
+      </svg>
+    </div>
+  </section>
+
+  <!-- 2. The model -->
+  <section>
+    <div class="head">
+      <div class="eyebrow">2 · The model</div>
+      <h2>11.9M parameters, one decision per player per step</h2>
+      <p>Each step, for each player, the model sees a set of tokens and makes one decision through 10 heads.</p>
+    </div>
+    <div class="scroll"><dl class="facts">
+      <dt>unit tokens</dt><dd>one per unit the player sees (own, enemy, creeps, mines): ~5 early, 50–100+ later</dd>
+      <dt>each unit</dt><dd>69 numbers (health, map cell…) + embeddings of type, owner, order, items, buffs</dd>
+      <dt>map tokens</dt><dd>the 128×128 map (12 channels: trees, units, starts…) as 64 tiles</dd>
+      <dt>scalar token</dt><dd>1: gold, food, time, research, the last decisions</dd>
+      <dt>trunk</dt><dd>4 transformer blocks of width 256; a mask hides padding: any unit count works</dd>
+      <dt>memory</dt><dd>3 SSM layers carry the game; 1 attention layer looks back ≤ 64 steps</dd>
+      <dt>heads</dt><dd>10 in order, masked to legal choices: type → argument → aim → … → target → region → cell</dd>
+      <dt>critic</dt><dd>the position's value; also sees the opponent's numbers</dd>
+      <dt>precision</dt><dd>trunk bfloat16, heads float32; inference and learner agree to p99 0.04</dd>
+    </dl></div>
+  </section>
+
+  <!-- 3. One game step -->
+  <section>
+    <div class="head">
+      <div class="eyebrow">3 · One game step</div>
+      <h2>What a game waits through, four times a game-second</h2>
+      <p>A game is idle while it waits for its decision, so this loop sets its speed.<br>A step takes <span class="num">~58 ms</span> from us-east sandboxes, <span class="num">~72 ms</span> from us-central: 4× game speed.<br>The learner is not in this loop.</p>
+    </div>
+    <div class="scroll"><ol class="cycle">
+      <li><span class="what"><span class="tag cpu">CPU</span>The game advances 250 ms and writes an observation.</span><span class="where">Sandbox, Wine</span><span class="t">~7 ms</span></li>
+      <li><span class="what"><span class="tag cpu">CPU</span>The game hook turns it into the model's tokens and legality masks.</span><span class="where">Sandbox, in the game (C)</span><span class="t">~0.1 ms</span></li>
+      <li><span class="what"><span class="tag net">NET</span>They cross to the game's actor.</span><span class="where">TCP tunnel</span><span class="t">½ of ~14–30 ms</span></li>
+      <li><span class="what"><span class="tag cpu">CPU</span>The actor sends them to inference.</span><span class="where">Actor</span><span class="t">~4 ms / 32 games</span></li>
+      <li><span class="what"><span class="tag gpu">GPU</span>Inference decides (section 4).</span><span class="where">Inference, GPU 1</span><span class="t">~17 ms</span></li>
+      <li><span class="what"><span class="tag cpu">CPU</span>The actor turns the decision into game commands and saves the step for the learner.</span><span class="where">Actor</span><span class="t">~2.5 ms / 32 games</span></li>
+      <li><span class="what"><span class="tag net">NET</span>The commands cross back; the game applies them.</span><span class="where">TCP tunnel</span><span class="t">½ of ~14–30 ms</span></li>
+    </ol></div>
+  </section>
+
+  <!-- 4. Inference -->
+  <section>
+    <div class="head">
+      <div class="eyebrow">4 · Inference</div>
+      <h2>One recorded GPU program per batch size</h2>
+      <p>A batch is whatever requests arrived in the last 2 ms.<br>Its step (model, heads, critic, each game's memory) is compiled and recorded once as a CUDA graph.<br>Each batch replays the recording with one launch: ~6 ms for ~46 games, ~2 ms of it on the GPU.<br>A recording fits one array size, but batches vary: in games, and in unit tokens (their fullest game's).<br>So batches are padded up to 64/128/256/512 games and 96/128/256 unit rows: 12 recordings,<br>all made at its first batch.</p>
+    </div>
+    <h3>Where a request's ~17 ms goes (us-east actor)</h3>
+    <div class="scroll"><ol class="cycle">
+      <li><span class="what"><span class="tag cpu">CPU</span>Waits unread while the batch before it finishes.</span><span class="where">Inference process</span><span class="t">~6 ms</span></li>
+      <li><span class="what"><span class="tag cpu">CPU</span>Its batch collects requests for up to 2 ms.</span><span class="where">Inference process</span><span class="t">~2 ms</span></li>
+      <li><span class="what"><span class="tag cpu">CPU</span>Join the requests; pack the inputs and masks into the recording's buffers.</span><span class="where">Inference process</span><span class="t">~1.5 ms</span></li>
+      <li><span class="what"><span class="tag gpu">GPU</span>Replay the recorded step; copy the choices back.</span><span class="where">GPU 1</span><span class="t">~3.5 ms</span></li>
+      <li><span class="what"><span class="tag cpu">CPU</span>Answer each actor; the answer crosses to it.</span><span class="where">Inference process → actor</span><span class="t">~3.5 ms</span></li>
+    </ol></div>
+    <h3>The GPU's ~1.8 ms of it (58 games, 96 unit rows, offline)</h3>
+    <div class="scroll"><dl class="facts">
+      <dt>encode</dt><dd>map, unit embeddings, tiles, 4 blocks: <span class="num">1.1 ms</span></dd>
+      <dt>heads</dt><dd>10 in order, each masked: <span class="num">0.26 ms</span></dd>
+      <dt>memory</dt><dd>3 SSM layers and the time attention: <span class="num">0.16 ms</span></dd>
+      <dt>the rest</dt><dd>critic, each game's memory in and out: <span class="num">~0.25 ms</span></dd>
+    </dl></div>
+    <h3>Why two inference processes</h3>
+    <p>A batch is ~2/3 CPU work (joining, packing, answering) and ~1/3 GPU.<br>One process cannot do both at once.<br>With two, each serving half the actors, one prepares while the other runs. Roughly to scale:</p>
+    <div class="panel tl scroll">
+      <svg viewBox="0 0 1000 270" role="img" aria-label="Timelines: one inference process leaves the GPU idle while it prepares each batch; two processes overlap preparing and running">
+        <!-- axis: x = 200 + ms * 8.4 -->
+        <text x="20" y="40" class="t-title">One process</text>
+        <text x="20" y="58" class="t-small">own GPU</text>
+        <text x="140" y="44" class="t-small">proc 0</text>
+        <rect x="200" y="30" width="160" height="20" class="s-cpu"/><rect x="444" y="30" width="160" height="20" class="s-cpu"/><rect x="688" y="30" width="160" height="20" class="s-cpu"/>
+        <text x="140" y="74" class="t-small">GPU</text>
+        <rect x="200" y="60" width="160" height="20" class="s-idle"/><rect x="360" y="60" width="84" height="20" class="s-gpu"/><rect x="444" y="60" width="160" height="20" class="s-idle"/><rect x="604" y="60" width="84" height="20" class="s-gpu"/><rect x="688" y="60" width="160" height="20" class="s-idle"/><rect x="848" y="60" width="84" height="20" class="s-gpu"/>
+        <text x="956" y="74" class="t-num" text-anchor="end"></text>
+        <text x="200" y="100" class="t-num">3 batches in the time · a request answered in ~23 ms (offline, paced like a run)</text>
+
+        <line x1="20" y1="118" x2="980" y2="118" class="lane-rule"/>
+        <text x="20" y="152" class="t-title">Two processes</text>
+        <text x="20" y="170" class="t-small">own GPU · now</text>
+        <text x="140" y="146" class="t-small">proc 0</text>
+        <rect x="200" y="132" width="160" height="20" class="s-cpu"/><rect x="444" y="132" width="160" height="20" class="s-cpu"/><rect x="688" y="132" width="160" height="20" class="s-cpu"/>
+        <text x="140" y="172" class="t-small">proc 1</text>
+        <rect x="284" y="158" width="160" height="20" class="s-cpu"/><rect x="528" y="158" width="160" height="20" class="s-cpu"/><rect x="772" y="158" width="160" height="20" class="s-cpu"/>
+        <text x="140" y="198" class="t-small">GPU</text>
+        <rect x="200" y="184" width="160" height="20" class="s-idle"/><rect x="360" y="184" width="84" height="20" class="s-gpu"/><rect x="444" y="184" width="84" height="20" class="s-gpu"/><rect x="528" y="184" width="76" height="20" class="s-idle"/><rect x="604" y="184" width="84" height="20" class="s-gpu"/><rect x="688" y="184" width="84" height="20" class="s-gpu"/><rect x="772" y="184" width="76" height="20" class="s-idle"/><rect x="848" y="184" width="84" height="20" class="s-gpu"/>
+        <text x="200" y="224" class="t-num">5 batches in the same time · a request answered in ~8.6 ms</text>
+
+        <rect x="200" y="244" width="16" height="12" class="s-cpu"/><text x="222" y="255" class="t-small">a process's CPU work</text>
+        <rect x="380" y="244" width="16" height="12" class="s-gpu"/><text x="402" y="255" class="t-small">our batch's GPU kernels</text>
+        <rect x="572" y="244" width="16" height="12" class="s-idle"/><text x="594" y="255" class="t-small">GPU idle</text>
+      </svg>
+    </div>
+    <div class="scroll"><dl class="facts">
+      <dt>start</dt><dd>the 12 recordings: <span class="num">~90 s</span> with the Volume's compile cache, ~6 min without</dd>
+      <dt>weights</dt><dd>pulled every 1 s on a side thread, loaded between batches (~15 ms)</dd>
+    </dl></div>
+  </section>
+
+  <!-- 5. The learner -->
+  <section>
+    <div class="head">
+      <div class="eyebrow">5 · The learner</div>
+      <h2>From 128 chunks to new weights</h2>
+      <p>Actors cut each learning player's game into 64-step chunks and send each as soon as it is done.<br>Every 128 chunks (8,192 steps) the learner on GPU 0 makes one PPO update.<br>Inference has the new weights within ~1 s.</p>
+    </div>
+    <h3>Where an update's ~0.62 s of work goes (run sp28)</h3>
+    <div class="scroll"><ol class="cycle">
+      <li><span class="what"><span class="tag gpu">GPU</span>Value and reference passes: the critic and the frozen clone over all 8,192 steps.</span><span class="where">GPU 0</span><span class="t">~0.13 s</span></li>
+      <li><span class="what"><span class="tag gpu">GPU</span>4 gradient steps of 2,048 steps each, the unit tokens packed (no padding).</span><span class="where">GPU 0</span><span class="t">~0.44 s</span></li>
+      <li><span class="what"><span class="tag cpu">CPU</span>Copy the batch to the GPU; statistics; a save every 10 updates.</span><span class="where">Learner process</span><span class="t">~0.06 s</span></li>
+      <li><span class="what"><span class="tag cpu">CPU</span>Meanwhile, on a side thread: build the next batch.</span><span class="where">Learner process</span><span class="t">overlapped</span></li>
+    </ol></div>
+    <div class="scroll"><dl class="facts">
+      <dt>then</dt><dd>it waits ~0.55 s for the next 128 chunks: the games make ~7,100 steps/s</dd>
+      <dt>losses</dt><dd>PPO clip 0.2 (dual 3), value, entropy 0.003, KL to the clone 0.2, auxiliary</dd>
+      <dt>advantages</dt><dd>GAE, γ 0.9999, λ 0.95</dd>
+      <dt>reward</dt><dd>+1 win, −1 loss, −1 at the 15-minute limit; nothing else</dd>
+      <dt>opponents</dt><dd>a ladder (the idle player, frozen clones, the built-in AI) plus self-play</dd>
+      <dt>lag</dt><dd>chunks more than 8 updates old are dropped</dd>
+      <dt>start</dt><dd>every unit-row size compiled before the first update</dd>
+    </dl></div>
+  </section>
+
+  <!-- 6. Speeds and bottlenecks -->
+  <section>
+    <div class="head">
+      <div class="eyebrow">6 · Speeds and bottlenecks</div>
+      <h2>What each part can do, and what limits it</h2>
+      <p>Steps or decisions per second, one scale.</p>
+    </div>
+    <div class="panel bars">
+      <div class="bar"><div class="lab">Games<small>8 sandboxes stepping flat out · offline</small></div><div class="track"><div class="fill cpu" style="width:94.1%"><span>~16,000</span></div></div></div>
+      <div class="bar"><div class="lab">Learner<small>~0.62 s of work an update, in a run</small></div><div class="track"><div class="fill gpu" style="width:77.6%"><span>~13,000</span></div></div></div>
+      <div class="bar"><div class="lab">Inference<small>2 processes, paced like a run · offline (GPU 1 still ~1/3 busy)</small></div><div class="track"><div class="fill gpu" style="width:61.8%"><span>10,500 tested</span></div></div></div>
+      <div class="bar"><div class="lab"><b>Self-play now</b><small>512 games, 8 sandboxes</small></div><div class="track"><div class="fill real" style="width:42.9%"><span>~7,000–7,300</span></div></div></div>
+      <div class="grid-ticks"><div></div><div class="ticks"><span style="left:0">0</span><span style="left:29.4%">5,000</span><span style="left:58.8%">10,000</span><span style="left:88.2%">15,000</span></div></div>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Part</th><th>Can do</th><th>Does now</th><th>Limit</th></tr></thead>
+        <tbody>
+          <tr><td><b>Games (512)</b></td><td class="n">~7,300–8,800</td><td class="n">~7,000–7,300</td><td>their 58–72 ms loop</td></tr>
+          <tr><td>Learner (GPU 0)</td><td class="n">~13,000</td><td class="n">keeps up</td><td>none: waits ~half the time</td></tr>
+          <tr><td>Inference (GPU 1)</td><td class="n">~20,000 (estimate)</td><td class="n">~7,000</td><td>none: GPU ~1/3 busy</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="callout"><b>Limit now: the games' loop.</b> All sandboxes in us-east would take it to ~8,800 steps/s (estimate).<br>The learner and inference have room for ~1.8× and ~3× more: more games per container is the next lever.</p>
+  </section>
+
+  <!-- 7. GPUs and cost -->
+  <section>
+    <div class="head">
+      <div class="eyebrow">7 · GPUs and cost</div>
+      <h2>Two H100s, mostly idle math</h2>
+      <p>The model is narrow (width 256): thousands of small memory-bound steps around small matrix products.<br>GPU math used: ~1% of an H100 for inference, a few % for the learner.<br>GPU 1 is busy ~1/3 of the time (estimate).<br>GPU 1 exists so inference never waits behind the learner.</p>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Per hour, 512 games (estimate)</th><th>Cost</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Sandbox CPU</td><td class="n">~$10</td><td>~9–11 cores a sandbox, $0.142 / core-h</td></tr>
+          <tr><td>Sandbox memory</td><td class="n">~$5</td><td>the request: 25.6 GiB per 64 games, $0.024 / GiB-h</td></tr>
+          <tr><td>GPUs</td><td class="n">~$8</td><td>2 × H100 at $3.95 / h</td></tr>
+          <tr><td>Container CPU and memory</td><td class="n">~$2</td><td>48 cores at $0.047, 128 GiB at $0.008</td></tr>
+          <tr><td><b>Total</b></td><td class="n">~$25</td><td><b>~$0.95 per million steps</b>; no bill yet for this layout</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- 8. Open -->
+  <section>
+    <div class="head">
+      <div class="eyebrow">8 · Open</div>
+      <h2>What would change this picture</h2>
+    </div>
+    <div class="scroll"><ul class="open">
+      <li>Sandboxes in us-east only (made again until they land there; free): ~8,800 steps/s.</li>
+      <li>More games per container (e.g. 12 sandboxes) now that the learner and inference have room.</li>
+      <li>One H100 for learner and inference, or two A100s: one short run to compare.</li>
+      <li>A real bill for this layout.</li>
+      <li>A bigger model (the GPUs' math is mostly idle); positions for the time attention.</li>
+    </ul></div>
+  </section>
+
+  <footer>Sources and history: 9-benchmarks.md, 10-actor-design.md, 12-hook-features.md and todo/ in this folder. This page shows only the current state.</footer>
+</main>
+</body>
+</html>

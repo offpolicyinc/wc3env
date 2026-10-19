@@ -27,7 +27,7 @@ The actor, learner and launcher take `--mode game|combat`. A mode supplies every
 | rewards | `reward.Shaping` + win | army value traded + win |
 | shaping weight in the learner | fades with the league's win rate | always 1 |
 | episode over | Warcraft's result or the league's time limit | 30% rule held 2 s, 150 s limit, or Warcraft's result |
-| map reloaded | at the time limit | once the game clock passes 10 minutes |
+| map reloaded | at the time limit | after every fight |
 
 An `Episode` is made at each episode's start and has four hooks: `start` (returns the first observations, or None if
 it sent a staging step), `staged`, `commands` (scripted players' orders) and `step` (returns a `Step`: rewards per
@@ -74,7 +74,7 @@ Locally this took 0.03-0.1 s (a little more with the skill steps). The actor isn
              ├─ one side's army value < 30% of the other's for 2 s ──► that side lost: +1 / -1 on the win channel
              ├─ 150 game seconds and still undecided        ──► a loss for both (-1)
              └─ Warcraft ends the game (a whole side died)  ──► its result
- then: the next fight staged in the same game; once the game's clock passes 10 minutes, the map is loaded again
+ then: the map loaded again, the next fight staged on it
 ```
 
 **Army value:** each living unit's gold + lumber times the square root of its share of hit points. Why the root
@@ -114,7 +114,7 @@ weights it 1 throughout (`Combat.shaping`), unlike whole games' shaping, which f
 | Ladder games: Warcraft's attack-move as the opponent (every 3 s its units attack-move to the centre of our army, picking their own targets), one ladder level (`attack-move`) | A fixed baseline that never changes: the question "does the policy fight better than Warcraft's own attack-move?". |
 | Ladder stages: the opponent handicapped 0.35, 0.5, 0.6, 0.7, 0.85, 0.9, 0.95, then even (1.0), then outnumbering us 1.1x to 2x in steps of 0.1 in unit food (same heroes; the last unit a coin flip, so each stage's extra food is right on average: a tenth more of a small army is less than a Grunt) | The curriculum. 0.35 first: bc12 won 5 of 5 at 0.05. Past even, more units rather than tougher ones: the handicap is a hidden damage scale the policy can't see, extra units it can, and they're real Warcraft. Attack-move against itself from the smaller side at 1.5x: 2 of 12 won, so hard but possible. |
 | A stage passed at 80 wins in a block of 100 fights (blocks one after another, in start order), or 18 of its first 20 | Blocks, not a window rolling every fight: a stage sees hundreds of fights, and a rolling window checked after each one is soon passed by a lucky stretch (cb3 left 0.95 at 60-70%). 100, not 50: cb5 left 0.95 on one block of 41 of 50 while its blocks ran 22-35 (~60%), one lucky block in ~48. A player truly at 65% passes a block of 100 0.1% of the time (of 50: 1.6%), at 70% 1.7% (8%), at 80% 56%, at 85% 93%. The 18 of 20: stages far too easy don't take 50 fights. Applies to whole games too. |
-| The next fight staged in the same game; the map reloaded after 10 game minutes | Loading the map takes ~5 s and blocks the actor (`reset_one` is synchronous). Restaging takes 0.1 s. Reloading every 10 minutes keeps the game clock (a feature, and the reward's decay) in the range the model knows. |
+| Every fight on a freshly loaded map (2026-10-19) | The game clock is one of the model's inputs: each fight then starts where a whole game does, instead of at some point of a 10-minute clock shared by several fights. Loading the map takes ~1 s. Before, fights followed each other in one game (restaging 0.1 s) and the map was loaded again past 10 game minutes. |
 | Only fight orders legal: noop, move, attack-move, smart, attack, stop, hold, the three casts, use item (`FIGHT_TYPES`); the rest masked before each decision | Sell, drop, revive and the like were legal on most steps (revive on 85% with no altar on the map) and only waste steps, or exploration. |
 | An exploration floor (`--explore-floor 0.005 --explore-tries 50000`): every order type but noop has at least 0.5% chance wherever legal, until the run has chosen it 50,000 times, then PPO alone decides | Rare but valuable orders never got tried: cb5 cast a targeted spell on 0.04% of steps (about once in 7 fights) and focus-fired on 0.05%, too few for PPO to learn whether they pay. 0.5% is ~1.8 tries per 1.5-minute fight per type, at most ~5% of steps for all of them (warcraftsim: 7.5% random actions took 54% wins to 18%). A floor, not a push: it acts only while a type is below it. 50,000 tries: ~45 minutes of training. The learner logs each type's share (`share_*`), its tries (`tries_*`) and how many are still floored. |
 | The floor re-armed at each promotion (each type's tries back to 0), and `--explore-min`: once a type's tries are done, at least that chance for good | cb6's floor came off every type by update 330; hold and stop then fell to 0.3% of steps and cast_point from 9% to 1%. What did not pay against a weaker opponent may against a stronger one, so each stage gets its own 50,000 tries per type; the minimum (0.1%: ~1% of steps over the 10 types) keeps any type from dying out. |

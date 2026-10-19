@@ -17,36 +17,48 @@ For the agent setting up the home machine (RTX 3090 Ti 24 GB, Ryzen 9500 as the 
   same game, one 3090) learned on the same problem: [warcraftsim.md](warcraftsim.md) and his repo's
   `docs/reference/optimization-log.md`.
 
-## The handoff folder
+## The USB drive
 
-The user's Desktop has `wc3-training-handoff/` (on OneDrive; copy it if it did not sync):
+The user's USB stick (the Ubuntu 24.04 installer) has `wc3-transfer/` beside the installer's files:
 
-| file | what | goes to |
+| path | what | goes to |
 |---|---|---|
-| `checkpoints/cb9.pt` | the latest: weights, Adam state, league | `checkpoints/cb9.pt` (`--start`) |
-| `checkpoints/cb7.pt` | cb9's anchor | `checkpoints/cb7.pt` (`--init`, to continue cb9 as it was) |
-| `checkpoints/bc12.pt`, `cbe05.pt` | the pro-replay clone; its policy with a fight critic | the anchor if the user wants it back at the clone |
-| `data/plans.npz` | the plan bank (pro plans the policy is given) | `runs/plans.npz` (actor.py's default) |
-| `data/cb9-games.jsonl` | cb9's game log, for comparison | anywhere |
-| `maps/*.w3x` | FlatArena (combat) and the 3x Echo Isles | `build/maps/` and `<game>/Maps/FrozenThrone/` |
+| `Warcraft III (Legacy)/` | the user's 1.29.2.9232 install, with `roc.w3k`/`tft.w3k` (licence files: keep them out of git and any upload) | e.g. `~/games/wc3` (`WC3_GAME_DIR`) |
+| `wc3-training-handoff/checkpoints/cb9.pt` | the latest: weights, Adam state, league | `checkpoints/cb9.pt` (`--start`) |
+| `.../checkpoints/cb7.pt` | cb9's anchor | `checkpoints/cb7.pt` (`--init`, to continue cb9 as it was) |
+| `.../checkpoints/bc12.pt`, `cbe05.pt` | the pro-replay clone; its policy with a fight critic | the anchor if the user wants it back at the clone |
+| `.../data/plans.npz` | the plan bank (pro plans the policy is given) | `runs/plans.npz` (actor.py's default) |
+| `.../data/cb9-games.jsonl` | cb9's game log, for comparison | anywhere |
+| `.../maps/*.w3x` | FlatArena (combat) and the 3x Echo Isles | `build/maps/` and `<game>/Maps/FrozenThrone/` |
+| `.../generated/wc3hook.dll` | the hook, built 2026-10-18 from this commit (MSVC; not in git) | `src/wc3env/native/wc3hook.dll` |
+| `.../wc3env-training.bundle` | the repo offline (or clone branch `training` from GitHub) | |
 
-Everything else of every run is on the Modal Volume `wc3-dataset` (`runs/<name>/`), profile `peter-nico`.
+The stick is FAT32: executable bits are lost, so `chmod +x` scripts if needed. Everything else of every run is on
+the Modal Volume `wc3-dataset` (`runs/<name>/`), profile `peter-nico`.
 
-## Setup (Windows, native: no Wine needed)
+## Setup (Ubuntu, everything local: the games under Wine)
 
-1. Warcraft III Legacy TFT **1.29.2.9232** from Battle.net (README's Setup), with `roc.w3k`/`tft.w3k`.
-2. Visual Studio Build Tools (Desktop development with C++), then `wc3hook/build.bat`.
-3. Python 3.11+ (64-bit); `python -m pip install -e .[remote]`; torch with CUDA:
-   `python -m pip install torch --index-url https://download.pytorch.org/whl/cu128`; `numpy zstandard wandb wandb-workspaces`.
-4. `.env` from `.env.example` (`WC3_GAME_DIR`, `WC3_USER_DIR`). W&B: `wandb login` (project off-policy-inc/wc3).
+The game is 32-bit Windows, so it runs under Wine; the learner, inference and actors run in Linux Python. The
+recipe that already works is the worker image: [docker/Dockerfile](../../docker/Dockerfile) and
+[docker/install.sh](../../docker/install.sh). Do what they do on the host, not in Docker:
+
+1. NVIDIA driver + CUDA-enabled torch in a Linux Python 3.11+ venv (`torch` cu128 wheel; `numpy zstandard wandb
+   wandb-workspaces`; `pip install -e .[remote]`).
+2. Wine with 32-bit support (the image uses WineHQ stable 11; warcraftsim found GE-Proton's Wine with fsync ~28%
+   cheaper per step: worth measuring), `WINEARCH=wow64`, a prefix (`wineboot -u`), Windows Python 3.11 installed
+   in it at `C:\Python311` with this repo's `wc3env` (+ numpy, zstandard), and the game folder linked as
+   `drive_c/wc3`. A virtual display (Xvfb, as `docker/with-display.sh`) unless the desktop's is used.
+3. The hook from the stick into `src/wc3env/native/`, the maps into the game's `Maps/FrozenThrone/` and `build/maps/`.
+4. `.env` from `.env.example`: `WC3_GAME_DIR` as Wine sees it. W&B: `wandb login` (project off-policy-inc/wc3).
    **Never print `.env`**: it holds API keys.
-5. Maps: copy the folder's `maps/*.w3x` to `build/maps/` and to `<WC3_GAME_DIR>/Maps/FrozenThrone/` (or rebuild
-   FlatArena: `python -m tools.prepare.arena`). Their map data is tracked (`src/wc3env/data/maps/`).
-6. Check: `python -m tests.e2e` (real game, ~3 min), then a 20-update smoke run (below, `--actors 1 --games 4`).
+5. Check the environment alone first: `python -m wc3env.vector --wine ...` (see its `--help`) or `docker/smoke.py`'s steps.
 
-torch.compile needs Triton, which PyTorch does not ship for Windows: if the learner or inference fails to compile,
-pass `--no-compile` to both (learner: after `--`; inference: `training/selfplay/inference.py` has the flag but
-`run.py` does not pass it through yet, so add that), or try `triton-windows`. Measure the cost; it was large on Modal.
+**A gap to close first:** the actors (`training/selfplay/actor.py`) launch games with `local_workers` (Windows
+Python, no Wine), `remote_workers` or `dial_workers` (Modal's sandboxes). Nothing passes `wine_workers()`
+(`src/wc3env/vector.py`, a Wine prefix per group of games) yet; add an actor flag for it, as `wc3env.vector`'s own
+`--wine` does. Two games per prefix measured best ([docker/README.md](../../docker/README.md)).
+
+torch.compile works on Linux (Triton ships with torch), as on Modal.
 
 ## Continuing cb9
 

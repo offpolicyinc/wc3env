@@ -63,7 +63,9 @@ def _send(box: modal.Sandbox, target: str, data: bytes) -> None:
         raise RuntimeError(f"could not write {target}")
 
 
-def shard(number: int, ids: list[str], image: modal.Image, code: bytes, cpu: float, memory: int, job: str, folder: str = "") -> str:
+def shard(
+    number: int, ids: list[str], image: modal.Image, code: bytes, cpu: float, memory: int, job: str, folder: str = ""
+) -> str:
     from wc3env.settings import settings
 
     volumes = {"/replays": modal.Volume.from_name(REPLAY_VOLUME), "/dataset": modal.Volume.from_name(DATA_VOLUME)}
@@ -133,7 +135,11 @@ def run(shards: int, cpu: float, memory: int, job: str, limit: int = 0, folder: 
     ids = [line.split()[0] for line in (REPLAYS / "good.txt").read_text().splitlines() if line.strip()]
     volume = modal.Volume.from_name(DATA_VOLUME, create_if_missing=True)
     try:
-        done = {e.path.rsplit("/", 1)[-1].split("_")[0] for e in volume.listdir(f"/{folder or job}") if e.path.endswith(".npz")}
+        done = {
+            e.path.rsplit("/", 1)[-1].split("_")[0]
+            for e in volume.listdir(f"/{folder or job}")
+            if e.path.endswith(".npz")
+        }
     except Exception:  # noqa: BLE001 (the folder is not there yet)
         done = set()
     ids = [i for i in ids if i not in done][: limit or None]

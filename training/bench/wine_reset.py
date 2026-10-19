@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 from training.cloud.scripts import _preamble, low_video  # noqa: E402
 from training.cloud.selfplay import _local, games_image, games_sandbox  # noqa: E402
 
-BENCH = r'''
+BENCH = r"""
 import sys, time
 from wc3env.session import GameConfig, MatchSetup, PlayerConfig
 from wc3env.vector import VectorSession, wine_workers
@@ -43,7 +43,7 @@ with VectorSession(configs, group_size=2, launch=wine_workers()) as s:
                 s.reset_one(i)
         print(f"round {r}: {failed} failed resets so far, {time.time() - began:.0f} s", flush=True)
 print(f"RESULT per_process={per_process}: {failed} of {games * rounds} resets failed", flush=True)
-'''
+"""
 
 
 def main() -> None:
@@ -63,9 +63,11 @@ def main() -> None:
         _send(box, "/work/bench.py", BENCH.encode())
         script = _preamble("/work:/opt/host", "/sessions/out") + low_video()
         for n in a.per_process.split(","):
-            script += (f"python3 /work/bench.py {a.games} {a.steps} {a.rounds} {n} >> /sessions/out/bench.txt "
-                       f"2>> /sessions/out/err-{n}.txt || echo per_process={n} crashed >> /sessions/out/bench.txt\n"
-                       "for p in $WINEPREFIX $TMPDIR/wine-prefix-*; do WINEPREFIX=$p wineserver -k 2>/dev/null || true; done; sleep 5\n")
+            script += (
+                f"python3 /work/bench.py {a.games} {a.steps} {a.rounds} {n} >> /sessions/out/bench.txt "
+                f"2>> /sessions/out/err-{n}.txt || echo per_process={n} crashed >> /sessions/out/bench.txt\n"
+                "for p in $WINEPREFIX $TMPDIR/wine-prefix-*; do WINEPREFIX=$p wineserver -k 2>/dev/null || true; done; sleep 5\n"
+            )
         _send(box, "/work/bench.sh", script.encode())
         stream(box, "chown 10001:10001 /work/bench.sh /work/bench.py", root=True)
         proc = box.exec("bash", "-c", "su worker -s /bin/bash -p -c 'bash /opt/worker/with-display.sh bash /work/bench.sh' 2>&1 | tail -5; "

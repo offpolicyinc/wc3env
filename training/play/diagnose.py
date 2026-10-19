@@ -90,7 +90,9 @@ def pros(folder: Path, files: int, seed: int = 0) -> list[dict]:
     return out
 
 
-def checkpoint_games(checkpoint: str, games: int, minutes: float, map_name: str, plans: str, wine: bool = False) -> list[dict]:
+def checkpoint_games(
+    checkpoint: str, games: int, minutes: float, map_name: str, plans: str, wine: bool = False
+) -> list[dict]:
     """The checkpoint's games against the easy built-in AI (training/play/evaluate.py, recorded), measured."""
     from .evaluate import evaluate
 
@@ -128,7 +130,9 @@ def main() -> int:
         print(table("pros (all)", numbers["pros"]))
         print(table("pros (winners)", [g for g in numbers["pros"] if g["won"]]))
     if args.checkpoint:
-        numbers["checkpoint"] = checkpoint_games(args.checkpoint, args.games, args.minutes, args.map, args.plans, args.wine)
+        numbers["checkpoint"] = checkpoint_games(
+            args.checkpoint, args.games, args.minutes, args.map, args.plans, args.wine
+        )
         print(table(Path(args.checkpoint).name, numbers["checkpoint"]))
     if args.out:
         args.out.write_text(json.dumps(numbers))

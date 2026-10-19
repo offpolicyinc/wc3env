@@ -92,7 +92,9 @@ class Recorder:
     start_state: list | None  # the model's memory before the chunk's first step (numpy; None: the game's start)
     version: int
     lists: dict = field(default_factory=_lists)
-    extra: dict = field(default_factory=lambda: {k: [] for k in ("log_prob", "value", "reward", "done", "opponent", "recent")})
+    extra: dict = field(
+        default_factory=lambda: {k: [] for k in ("log_prob", "value", "reward", "done", "opponent", "recent")}
+    )
 
     def add(self, obs, d: Decision, opponent: np.ndarray) -> None:
         append_decision(self.lists, obs, d.features, d.choices, d.masks)
@@ -300,7 +302,11 @@ class Actor:
                     # comes: nothing waits for the rest of a round
                     while rounds and (self.inference.connection.poll(0) or not (in_flight or waiting)):
                         in_flight += self._send_round(rounds.popleft(), session)
-                    if waiting and len(rounds) < MAX_ROUNDS and (not in_flight or time.perf_counter() - first >= GATHER):
+                    if (
+                        waiting
+                        and len(rounds) < MAX_ROUNDS
+                        and (not in_flight or time.perf_counter() - first >= GATHER)
+                    ):
                         self.stages.add("in_flight", len(rounds), scale=1.0)  # requests already out
                         rounds.append(self._begin_round(waiting))
                         waiting = {}
@@ -518,7 +524,9 @@ class Actor:
         refresh = time.time() - self.last_refresh > self.args.refresh
         if self.ended or refresh:  # at least every --refresh seconds: the league waits only for actors it hears from
             running = [g.began for g in self.games if g.began is not None]
-            self.client.call("games", {"actor": self.args.seed, "ended": self.ended, "oldest": min(running, default=None)})
+            self.client.call(
+                "games", {"actor": self.args.seed, "ended": self.ended, "oldest": min(running, default=None)}
+            )
             self.ended = []
         if refresh:
             self.last_refresh = time.time()
@@ -527,8 +535,10 @@ class Actor:
             now = time.perf_counter()
             self.stages.add("busy", 1 - self.idle / max(now - self.reported, 1e-6), scale=100.0)  # % of the time
             self.idle, self.reported = 0.0, now
-            self.report(f"actor {self.args.seed}: {self.steps} game steps, {rate:.1f}/s, version {self.version}, "
-                        f"{self.failures} failed games; ms: {self.stages.line()}")
+            self.report(
+                f"actor {self.args.seed}: {self.steps} game steps, {rate:.1f}/s, version {self.version}, "
+                f"{self.failures} failed games; ms: {self.stages.line()}"
+            )
 
     def reconnect_inference(self) -> None:
         """A new link to the inference process (answers to the failed round's requests may be on the old one), and
@@ -565,25 +575,57 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--authkey", default=os.environ.get("WC3_SELFPLAY_KEY", "wc3-selfplay"))
     p.add_argument("--games", type=int, default=4)
     p.add_argument("--ai-games", type=int, default=1, help="of them, against Warcraft's AI")
-    p.add_argument("--eval-games", type=int, default=0, help="of them (the last), games that only evaluate: the "
-                   "ladder's rung at the learner's --eval-stage, each of its --evaluate policies in turn, not learned from")
+    p.add_argument(
+        "--eval-games",
+        type=int,
+        default=0,
+        help="of them (the last), games that only evaluate: the "
+        "ladder's rung at the learner's --eval-stage, each of its --evaluate policies in turn, not learned from",
+    )
     p.add_argument("--group", type=int, default=2, help="games per worker process")
-    p.add_argument("--mode", choices=modes.NAMES, default="game", help="whole games, or fights (training/selfplay/modes)")
+    p.add_argument(
+        "--mode", choices=modes.NAMES, default="game", help="whole games, or fights (training/selfplay/modes)"
+    )
     p.add_argument("--map", default="", help="the games' map (default: the mode's)")
-    p.add_argument("--races", nargs=2, metavar=("OWN", "OPPONENT"), help="one matchup in every game (default: each in turn)")
+    p.add_argument(
+        "--races", nargs=2, metavar=("OWN", "OPPONENT"), help="one matchup in every game (default: each in turn)"
+    )
     p.add_argument("--plans", default="runs/plans.npz")
     p.add_argument("--refresh", type=float, default=20, help="seconds between pulls of the league's state")
-    p.add_argument("--remote", type=int, default=0, help="the games' workers connect in on this port from another "
-                   "machine (python -m wc3env.vector --connect host:port --workers games/group)")
-    p.add_argument("--dial", default="", help="host:port where another machine's games' workers listen (python -m "
-                   "wc3env.vector --listen port --workers games/group): one connection out to it a worker")
-    p.add_argument("--wine", action="store_true", help="the games' workers as Windows Python under Wine, here "
-                   "(a Linux host; $WINEPREFIX, a copy of it per worker)")
-    p.add_argument("--game-cuts", type=int, default=1225, help="wc3hook's equivalent faster game code (wc3hook/cuts.c "
-                   "bits; 1225: 4.6%% less CPU a game-step, every step identical: docs/training/warcraftsim.md); 0: none")
-    p.add_argument("--nice", type=int, default=0, help="with --wine: the games' niceness (the learner and inference first)")
-    p.add_argument("--inference", required=True, help="host:port of the inference process deciding for this actor "
-                   "(training/selfplay/inference.py)")
+    p.add_argument(
+        "--remote",
+        type=int,
+        default=0,
+        help="the games' workers connect in on this port from another "
+        "machine (python -m wc3env.vector --connect host:port --workers games/group)",
+    )
+    p.add_argument(
+        "--dial",
+        default="",
+        help="host:port where another machine's games' workers listen (python -m "
+        "wc3env.vector --listen port --workers games/group): one connection out to it a worker",
+    )
+    p.add_argument(
+        "--wine",
+        action="store_true",
+        help="the games' workers as Windows Python under Wine, here "
+        "(a Linux host; $WINEPREFIX, a copy of it per worker)",
+    )
+    p.add_argument(
+        "--game-cuts",
+        type=int,
+        default=1225,
+        help="wc3hook's equivalent faster game code (wc3hook/cuts.c "
+        "bits; 1225: 4.6%% less CPU a game-step, every step identical: docs/training/warcraftsim.md); 0: none",
+    )
+    p.add_argument(
+        "--nice", type=int, default=0, help="with --wine: the games' niceness (the learner and inference first)"
+    )
+    p.add_argument(
+        "--inference",
+        required=True,
+        help="host:port of the inference process deciding for this actor (training/selfplay/inference.py)",
+    )
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--steps", type=int, default=0, help="stop after this many game steps (0: never; for tests)")
     return p
@@ -617,8 +659,15 @@ def main() -> None:
     args = parser().parse_args()
     actor = Actor(args)  # waits for the learner (up to 30 minutes) before the watchdog starts counting
     # the games run here, or elsewhere (python -m wc3env.vector --listen / --connect): one listener, kept across restarts
-    launch = dial_workers(args.dial) if args.dial else remote_workers(args.remote) if args.remote else \
-        _wine(args) if args.wine else local_workers
+    launch = (
+        dial_workers(args.dial)
+        if args.dial
+        else remote_workers(args.remote)
+        if args.remote
+        else _wine(args)
+        if args.wine
+        else local_workers
+    )
     threading.Thread(target=_watchdog, args=(args.learner,), daemon=True).start()
     for attempt in range(MAX_RESTARTS + 1):
         try:

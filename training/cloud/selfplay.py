@@ -48,9 +48,9 @@ from pathlib import Path
 import modal
 
 from ..bench.common import FLASH_ATTN_WHEEL
-from ..train.track import modal_secrets
 from ..selfplay import modes
 from ..selfplay.modes.game import Games
+from ..train.track import modal_secrets
 from .scripts import bridge, learner_hours
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -61,7 +61,9 @@ BRIDGE_PORT = 7800  # in a games sandbox: BRIDGE_PORT + j, bridge j's listener a
 MAX_RESTARTS = 5  # an inference process started again at most this often
 KERNELS = Path("/dataset/cache/inductor.tar")  # torch.compile's cache, kept between runs (one file: a folder of
 # thousands took the Volume over 10 minutes to copy)
-TRIES = 2  # GPU containers made in --region before one is pinned to --want (sp31: 3 of 3 landed in us-west and us-central)
+TRIES = (
+    2  # GPU containers made in --region before one is pinned to --want (sp31: 3 of 3 landed in us-west and us-central)
+)
 INFERENCE_PORT = 7500  # inside the container: INFERENCE_PORT + i, the actors' link to inference process i
 SLOW_SHARE, SLOW_CHECKS = 0.5, 3  # a sandbox replaced: an actor of it under this share of the median, minutes running
 MAX_REPLACED = 3  # replacements of one sandbox at most (a slow stretch on Modal's side does not loop)
@@ -75,9 +77,12 @@ image = (
 app = modal.App("wc3-selfplay", image=image)
 
 
-@app.function(gpu="H100", cpu=32, memory=131072, timeout=24 * 3600, volumes={"/dataset": VOLUME}, secrets=modal_secrets())
-def container(name: str, learner_argv: list[str], actors: int, actor_argv: list[str], inference: int = 2,
-              per_box: int = 2) -> None:
+@app.function(
+    gpu="H100", cpu=32, memory=131072, timeout=24 * 3600, volumes={"/dataset": VOLUME}, secrets=modal_secrets()
+)
+def container(
+    name: str, learner_argv: list[str], actors: int, actor_argv: list[str], inference: int = 2, per_box: int = 2
+) -> None:
     """The learner, `inference` inference processes (actor k decides through process k % inference: each one
     does its CPU work while another's batch is on the GPU) and `actors` actors (CPU only: no CUDA context each).
     The run ends when the learner does (its --hours, or stop); an inference process that dies is started again (its
@@ -120,6 +125,7 @@ def container(name: str, learner_argv: list[str], actors: int, actor_argv: list[
         registry[name] = {**registry.get(name, {}), "container_at": _placement(os.environ), "hardware": _hardware()}
         learner_proc = start("training.selfplay.learner", *learner_argv, "--listen", learner, gpu=learner_gpu)
         time.sleep(20)  # the learner loads its checkpoint before the others ask for weights
+
         def decider(i: int, restart: int = 0) -> subprocess.Popen:
             log = ("inference" if i == 0 else f"inference-{i}") + (f"-restart{restart}" if restart else "") + ".log"
             return start("training.selfplay.inference", "--learner", learner, "--listen", f"127.0.0.1:{INFERENCE_PORT + i}",
@@ -132,6 +138,7 @@ def container(name: str, learner_argv: list[str], actors: int, actor_argv: list[
             if time.time() - waited > 1800:
                 raise RuntimeError("the games sandboxes' addresses did not come in 30 minutes")
             time.sleep(5)
+
         def actor(k: int, restart: int = 0) -> subprocess.Popen:
             log = f"actor-{k}" + (f"-restart{restart}" if restart else "") + ".log"
             return start("training.selfplay.actor", "--learner", learner, "--inference", f"127.0.0.1:{INFERENCE_PORT + k % inference}",
@@ -266,7 +273,9 @@ def games_image(image_id: str = "") -> modal.Image:
             "python3 -m pip install --break-system-packages --no-cache-dir numpy zstandard",
         )
         .add_local_dir(ROOT / "src" / "wc3env", "/opt/env/wc3env", copy=True, ignore=["**/__pycache__/**"])
-        .run_commands(f"cp -r /opt/env/wc3env/. /opt/host/wc3env/ && cp -r /opt/env/wc3env/. {site}/ && chown -R 10001:10001 {site}")
+        .run_commands(
+            f"cp -r /opt/env/wc3env/. /opt/host/wc3env/ && cp -r /opt/env/wc3env/. {site}/ && chown -R 10001:10001 {site}"
+        )
     )
 
 
@@ -311,7 +320,9 @@ def start_bridges(box: modal.Sandbox, addresses: list[str], args, listen: bool =
     send(box, "/work/bridge.sh", bridge(addresses, args.games // args.group, listen=listen).encode())
     stream(box, "chown 10001:10001 /work/bridge.sh", root=True)
     # when the bridges end (the container is gone), so does the sandbox: its main process is `sleep infinity`
-    box.exec("bash", "-c", "su worker -s /bin/bash -p -c 'bash /opt/worker/with-display.sh bash /work/bridge.sh'; kill 1")
+    box.exec(
+        "bash", "-c", "su worker -s /bin/bash -p -c 'bash /opt/worker/with-display.sh bash /work/bridge.sh'; kill 1"
+    )
 
 
 def game_map(args) -> str:
@@ -395,7 +406,9 @@ def start(args) -> None:
         watch(args, image, code, continent, custom, [b.object_id for b, _, _ in made])
 
 
-def place_box(args, k: int, image, code: bytes, continent: str, custom: bytes, every: list) -> tuple[modal.Sandbox, str, list[str]]:
+def place_box(
+    args, k: int, image, code: bytes, continent: str, custom: bytes, every: list
+) -> tuple[modal.Sandbox, str, list[str]]:
     """Games sandbox k with its bridges listening, on the container's continent (made again up to 3 times); where it
     landed and its tunnels' addresses, one per actor of it."""
     ports = [BRIDGE_PORT + j for j in range(min(args.per_box, args.actors - k * args.per_box))]
@@ -420,8 +433,11 @@ def watch(args, image, code: bytes, continent: str, custom: bytes, boxes: list[s
     ("<name>:slow:<box>") made anew, its addresses published ("<name>:box:<box>"), the old one stopped."""
     registry = modal.Dict.from_name(REGISTRY)
     swaps = [0] * len(boxes)
-    print(f"watching for slow sandboxes (ctrl-c leaves the run going; python -m training.cloud.selfplay stop --name "
-          f"{args.name} ends it)", flush=True)
+    print(
+        f"watching for slow sandboxes (ctrl-c leaves the run going; python -m training.cloud.selfplay stop --name "
+        f"{args.name} ends it)",
+        flush=True,
+    )
     while any(_alive(box_id) for box_id in boxes):
         for b in range(len(boxes)):
             if registry.get(f"{args.name}:slow:{b}") is None:
@@ -435,7 +451,9 @@ def watch(args, image, code: bytes, continent: str, custom: bytes, boxes: list[s
             try:
                 box, at, addresses = place_box(args, b, image, code, continent, custom, made)
             except Exception as exc:  # noqa: BLE001  the old one stays; asked again later
-                print(f"games sandbox {b}: a new one failed ({type(exc).__name__}: {exc}); the old one kept", flush=True)
+                print(
+                    f"games sandbox {b}: a new one failed ({type(exc).__name__}: {exc}); the old one kept", flush=True
+                )
                 for box in made:
                     box.terminate()
                 registry.pop(f"{args.name}:slow:{b}")
@@ -467,7 +485,9 @@ def stop(args) -> None:
     _stop_sandboxes(args.name)
     if "app" in entry:  # cancelling the call alone left its container running: stop the whole app
         subprocess.run([sys.executable, "-m", "modal", "app", "stop", entry["app"], "--yes"], capture_output=True)
-    listed = subprocess.run([sys.executable, "-m", "modal", "app", "list", "--json"], capture_output=True, text=True, check=True)
+    listed = subprocess.run(
+        [sys.executable, "-m", "modal", "app", "list", "--json"], capture_output=True, text=True, check=True
+    )
     state = next((a["state"] for a in json.loads(listed.stdout) if a["app_id"] == entry.get("app")), "gone")
     alive = sum(_alive(box_id) for box_id in entry.get("sandboxes", []))
     if state not in ("stopped", "gone") or alive:
@@ -477,8 +497,10 @@ def stop(args) -> None:
 
 def log(args) -> None:
     entry = modal.Dict.from_name(REGISTRY).get(args.name, {})
-    print(f"placement: container {entry.get('container_at', '?')} ({entry.get('hardware', '?')}); sandboxes "
-          f"{entry.get('sandboxes_at', '?')}")
+    print(
+        f"placement: container {entry.get('container_at', '?')} ({entry.get('hardware', '?')}); sandboxes "
+        f"{entry.get('sandboxes_at', '?')}"
+    )
     sys.stdout.buffer.write(b"".join(VOLUME.read_file(f"runs/{args.name}/log.txt")))
     for entry in VOLUME.listdir(f"runs/{args.name}/actors"):  # the actors' and the inference process's last lines
         text = b"".join(VOLUME.read_file(entry.path)).decode(errors="replace").splitlines()
@@ -489,43 +511,103 @@ def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("command", choices=("start", "log", "stop"))
     p.add_argument("--name", required=True)
-    p.add_argument("--init", default="runs/bc10/step8k.pt", help="the KL's anchor, inside the Volume (the start too, "
-                   "without --start)")
-    p.add_argument("--start", default="", help="the weights to start from, inside the Volume (e.g. runs/cb9/last.pt): "
-                   "its Adam state comes along; the anchor stays --init")
+    p.add_argument(
+        "--init",
+        default="runs/bc10/step8k.pt",
+        help="the KL's anchor, inside the Volume (the start too, without --start)",
+    )
+    p.add_argument(
+        "--start",
+        default="",
+        help="the weights to start from, inside the Volume (e.g. runs/cb9/last.pt): "
+        "its Adam state comes along; the anchor stays --init",
+    )
     p.add_argument("--actors", type=int, default=16)
     p.add_argument("--games", type=int, default=32, help="per actor")
     p.add_argument("--ai-games", type=int, default=32, help="per actor: against the league's ladder rung")
-    p.add_argument("--eval-games", type=int, default=0, help="per actor, of --games: only evaluate (the current policy "
-                   "and each --evaluate checkpoint in turn, at the learner's --eval-stage; not learned from)")
-    p.add_argument("--evaluate", nargs="*", default=[], help="checkpoints inside the Volume the evaluation games play "
-                   "beside the current policy (e.g. runs/cb8/last.pt runs/cb9/last.pt)")
+    p.add_argument(
+        "--eval-games",
+        type=int,
+        default=0,
+        help="per actor, of --games: only evaluate (the current policy "
+        "and each --evaluate checkpoint in turn, at the learner's --eval-stage; not learned from)",
+    )
+    p.add_argument(
+        "--evaluate",
+        nargs="*",
+        default=[],
+        help="checkpoints inside the Volume the evaluation games play "
+        "beside the current policy (e.g. runs/cb8/last.pt runs/cb9/last.pt)",
+    )
     p.add_argument("--group", type=int, default=2, help="games per Wine worker")
-    p.add_argument("--races", nargs=2, metavar=("OWN", "OPPONENT"), help="one matchup in every game (default: each in turn)")
+    p.add_argument(
+        "--races", nargs=2, metavar=("OWN", "OPPONENT"), help="one matchup in every game (default: each in turn)"
+    )
     p.add_argument("--per-box", type=int, default=2, help="actors whose games one sandbox runs")
     p.add_argument("--cpu", type=float, default=4, help="a games sandbox's cores (billed on use, above this too)")
-    p.add_argument("--memory", type=int, default=0, help="a games sandbox's memory, MiB (0: sandbox_memory of its games)")
-    p.add_argument("--box-cpu", type=float, default=24, help="the GPU container's cores (billed on the request: sp27 "
-                   "used ~16, 16 actors at ~0.75, 2 inference processes at ~1, the learner ~2.3)")
-    p.add_argument("--inference", type=int, default=2, help="inference processes on the GPU (actors split among them): "
-                   "two decide 1.7x as fast as one (9-benchmarks.md)")
-    p.add_argument("--gpu", default="H100:2", help="the GPU container's GPUs: with two, inference has one of its own (sp15: 1.7x the steps/s of one H100 for ~25%% more an hour); H100 for one")
-    p.add_argument("--region", default="us", help="pin the GPU container there (Modal bills a broad region like us "
-                   "1.15x, a narrow one like us-east 1.75x); '' for anywhere")
-    p.add_argument("--want", default="us-east", help="where the container should land (the shortest tunnel to the "
-                   "sandboxes, 9-benchmarks.md): one landing elsewhere is made again, pinned there after TRIES; '' to take any")
-    p.add_argument("--mode", choices=modes.NAMES, default="game", help="whole games, 3x-speed games or fights on the "
-                   "flat arena (training/selfplay/modes; build fast's map first: python -m tools.prepare.fastmap, "
-                   "combat's: python -m tools.prepare.arena)")
-    p.add_argument("--map", default="", help="the games' map instead of the mode's: a map of build/maps (its map data "
-                   "in src/wc3env/data/maps)")
-    p.add_argument("--no-tls", dest="tls", action="store_false", help="the sandboxes' tunnels unencrypted, as before "
-                   "2026-10-12. By default encrypted (encrypted_ports, the actors connecting over TLS): Modal says "
-                   "unencrypted tunnels go through shared relays (some through the West Coast from us-east), encrypted "
-                   "ones to the sandbox directly; bench/tunnel_latency 2026-10-12, 20 min: unencrypted fell from 2717 "
-                   "round trips/s (p50 23 ms) to 59/s (p50 1.9 s) by minute 20, encrypted held 3160/s (p50 10 ms)")
-    p.add_argument("--no-watch", dest="watch", action="store_false", help="leave after the launch instead of staying "
-                   "on to replace slow sandboxes")
+    p.add_argument(
+        "--memory", type=int, default=0, help="a games sandbox's memory, MiB (0: sandbox_memory of its games)"
+    )
+    p.add_argument(
+        "--box-cpu",
+        type=float,
+        default=24,
+        help="the GPU container's cores (billed on the request: sp27 "
+        "used ~16, 16 actors at ~0.75, 2 inference processes at ~1, the learner ~2.3)",
+    )
+    p.add_argument(
+        "--inference",
+        type=int,
+        default=2,
+        help="inference processes on the GPU (actors split among them): "
+        "two decide 1.7x as fast as one (9-benchmarks.md)",
+    )
+    p.add_argument(
+        "--gpu",
+        default="H100:2",
+        help="the GPU container's GPUs: with two, inference has one of its own (sp15: 1.7x the steps/s of one H100 for ~25%% more an hour); H100 for one",
+    )
+    p.add_argument(
+        "--region",
+        default="us",
+        help="pin the GPU container there (Modal bills a broad region like us "
+        "1.15x, a narrow one like us-east 1.75x); '' for anywhere",
+    )
+    p.add_argument(
+        "--want",
+        default="us-east",
+        help="where the container should land (the shortest tunnel to the "
+        "sandboxes, 9-benchmarks.md): one landing elsewhere is made again, pinned there after TRIES; '' to take any",
+    )
+    p.add_argument(
+        "--mode",
+        choices=modes.NAMES,
+        default="game",
+        help="whole games, 3x-speed games or fights on the "
+        "flat arena (training/selfplay/modes; build fast's map first: python -m tools.prepare.fastmap, "
+        "combat's: python -m tools.prepare.arena)",
+    )
+    p.add_argument(
+        "--map",
+        default="",
+        help="the games' map instead of the mode's: a map of build/maps (its map data in src/wc3env/data/maps)",
+    )
+    p.add_argument(
+        "--no-tls",
+        dest="tls",
+        action="store_false",
+        help="the sandboxes' tunnels unencrypted, as before "
+        "2026-10-12. By default encrypted (encrypted_ports, the actors connecting over TLS): Modal says "
+        "unencrypted tunnels go through shared relays (some through the West Coast from us-east), encrypted "
+        "ones to the sandbox directly; bench/tunnel_latency 2026-10-12, 20 min: unencrypted fell from 2717 "
+        "round trips/s (p50 23 ms) to 59/s (p50 1.9 s) by minute 20, encrypted held 3160/s (p50 10 ms)",
+    )
+    p.add_argument(
+        "--no-watch",
+        dest="watch",
+        action="store_false",
+        help="leave after the launch instead of staying on to replace slow sandboxes",
+    )
     p.add_argument("rest", nargs="*", help="learner flags, after --")
     args = p.parse_args()
     {"start": start, "stop": stop, "log": log}[args.command](args)

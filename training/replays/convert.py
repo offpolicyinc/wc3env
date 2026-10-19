@@ -264,7 +264,9 @@ def _started(kind: str, type_id: int, after) -> bool:
     if kind == "train":
         return _event(after, "train_start", type_id)
     if kind == "research":
-        return _event(after, "research_start", type_id) or any(_event(after, "upgrade_start", t) for t in upgraded_from(type_id))
+        return _event(after, "research_start", type_id) or any(
+            _event(after, "upgrade_start", t) for t in upgraded_from(type_id)
+        )
     return True  # a revive has no start event
 
 
@@ -274,7 +276,11 @@ def upgraded_from(type_id: int) -> tuple[int, ...]:
     it as it was (wc3hook/events.c), its upgrade_finish as it became: matched against what it becomes, every hall and
     tower upgrade was dropped as never started (0 of 675 pro replays' plans had one)."""
     code = fourcc(type_id)
-    return tuple(int.from_bytes(c.encode("latin-1"), "big") for c, u in reference()["units"].items() if code in u.get("upgrades_to", []))
+    return tuple(
+        int.from_bytes(c.encode("latin-1"), "big")
+        for c, u in reference()["units"].items()
+        if code in u.get("upgrades_to", [])
+    )
 
 
 def _changed(c: Command, rows) -> bool:

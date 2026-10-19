@@ -55,7 +55,18 @@ SINGLE = ("build", "learn", "use_item", "buy", "sell", "drop_item")  # the ancho
 # sampled and never in a loss): the argument; where the action goes (AIMS: none, a point, a unit); the actor,
 # unless the translator picks the building; same_type and size for group actions; Shift for QUEUEABLE ones.
 AIMS = ("none", "point", "unit")
-HAS_ARGUMENT = (*PRODUCTION, "build", "learn", "cast", "cast_point", "cast_unit", "use_item", "buy", "sell", "drop_item")
+HAS_ARGUMENT = (
+    *PRODUCTION,
+    "build",
+    "learn",
+    "cast",
+    "cast_point",
+    "cast_unit",
+    "use_item",
+    "buy",
+    "sell",
+    "drop_item",
+)
 AIM_OF = {
     "noop": ("none",),
     **{t: ("point",) for t in ("move", "attack_move", "cast_point")},

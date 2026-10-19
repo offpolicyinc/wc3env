@@ -48,7 +48,9 @@ def bench() -> str:
     from training.selfplay.learner import Learner, parser
 
     traces = pickle.load(open("/root/obs.pkl", "rb"))
-    base = play(Agents(load("/root/model.pt", "cuda"), 1.0, 0), list(range(8)), 385, traces, Static.load(MAP, ("orc", "human")))
+    base = play(
+        Agents(load("/root/model.pt", "cuda"), 1.0, 0), list(range(8)), 385, traces, Static.load(MAP, ("orc", "human"))
+    )
     rng = np.random.default_rng(0)
     learner = Learner(parser().parse_args(["--init", "/root/model.pt", "--out", tempfile.mkdtemp()]))
     learner.update = learner.args.warmup + 1
@@ -70,7 +72,9 @@ def bench() -> str:
 
     lines = [timed("alone")]
     stop = threading.Event()
-    thread = threading.Thread(target=lambda: [learner._host(chunks) for _ in iter(lambda: stop.is_set(), True)], daemon=True)
+    thread = threading.Thread(
+        target=lambda: [learner._host(chunks) for _ in iter(lambda: stop.is_set(), True)], daemon=True
+    )
     thread.start()
     time.sleep(1)
     lines.append(timed("with _host on a thread"))

@@ -42,8 +42,14 @@ def main() -> None:
     static = Static.load(combat.MAP, ("orc", "orc"))
     agents = Agents(load(a.policy))
     logits = []  # the type head's output at each step (one seat)
-    agents.model.model.type_head.register_forward_hook(lambda m, i, o: logits.append(o.detach().float().reshape(-1, len(TYPES))[0]))
-    chance, legal, failed = np.zeros(len(TYPES)), np.zeros(len(TYPES)), Counter()  # failed: chosen, then no legal choice
+    agents.model.model.type_head.register_forward_hook(
+        lambda m, i, o: logits.append(o.detach().float().reshape(-1, len(TYPES))[0])
+    )
+    chance, legal, failed = (
+        np.zeros(len(TYPES)),
+        np.zeros(len(TYPES)),
+        Counter(),
+    )  # failed: chosen, then no legal choice
     config = GameConfig(map=str(ROOT / "build" / "maps" / "(2)FlatArena.w3x"), players=(PlayerConfig(0, "orc"), PlayerConfig(1, "orc")),
                         setup=MatchSetup(seed=a.seed), sound=False, step_ms=STEP_MS,
                         observation="binary", features={0: hook_spec(static)})  # fmt: skip
@@ -75,8 +81,11 @@ def main() -> None:
                 if done or winner is not None or now - start >= combat.SECONDS:
                     wins[winner] += 1
                     noop = types["noop"] / max(sum(types.values()), 1)
-                    print(f"fight {fight}: winner {winner} after {now - start:.0f} game s; so far no order on {noop:.0%} of "
-                          f"{sum(types.values())} steps", flush=True)
+                    print(
+                        f"fight {fight}: winner {winner} after {now - start:.0f} game s; so far no order on {noop:.0%} of "
+                        f"{sum(types.values())} steps",
+                        flush=True,
+                    )
                     break
     steps = sum(types.values())
     shares = {t: round(n / steps, 3) for t, n in types.most_common()}
@@ -88,8 +97,20 @@ def main() -> None:
         print(f"{t:12s} {chances[t]:8.4f} {legals[t]:8.3f}")
     print(f"chosen but no legal choice for a head (recorded as no order): {dict(failed.most_common())}")
     if a.out:
-        Path(a.out).write_text(json.dumps({"policy": a.policy, "won": wins[0], "fights": a.fights, "steps": steps, "types": shares,
-                                           "chance": chances, "legal": legals, "failed": dict(failed)}))
+        Path(a.out).write_text(
+            json.dumps(
+                {
+                    "policy": a.policy,
+                    "won": wins[0],
+                    "fights": a.fights,
+                    "steps": steps,
+                    "types": shares,
+                    "chance": chances,
+                    "legal": legals,
+                    "failed": dict(failed),
+                }
+            )
+        )
 
 
 if __name__ == "__main__":

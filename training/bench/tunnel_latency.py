@@ -38,7 +38,7 @@ SANDBOXES, FLOWS, TUNNELS = 2, 64, 2  # per arm; "in" and "reconnect": TUNNELS t
 COMMAND, REPLY, DECIDE, MINUTES, RECONNECT = 300, 4000, 0.012, 25, 120
 PORT, BOX_PORT = 7700, 7800
 
-CLIENT = r'''
+CLIENT = r"""
 import os, random, socket, ssl, sys, threading, time
 mode, reply = sys.argv[1], os.urandom(int(sys.argv[2]))
 TLS = ssl.create_default_context()
@@ -80,7 +80,7 @@ for k in range(flows):
     threads.append(threading.Thread(target=flow, args=(host, int(port), every, tls), daemon=True)); threads[-1].start()
 print(os.environ.get("MODAL_REGION", "?"), len(threads), "flows", flush=True)
 for t in threads: t.join()
-'''
+"""
 
 
 def _play(conn, arm: str, samples: list, lock) -> None:
@@ -160,8 +160,13 @@ def container(arms: tuple = ("out", "tls-out", "tls-in"), external: tuple = ()) 
                 threading.Thread(target=_listen, args=(p, arm, samples, lock), daemon=True).start()
             addresses = ["%s:%d" % (t.tls_socket if arm == "tls-in" else t.tcp_socket) for t in tunnels]
             for _ in range(SANDBOXES):
-                made = box("connect-tls" if arm == "tls-in" else "connect", str(REPLY), str(FLOWS),
-                           str(RECONNECT if arm == "reconnect" else 0), *addresses)
+                made = box(
+                    "connect-tls" if arm == "tls-in" else "connect",
+                    str(REPLY),
+                    str(FLOWS),
+                    str(RECONNECT if arm == "reconnect" else 0),
+                    *addresses,
+                )
                 print("sandbox", arm, next(iter(made.stdout), "?").strip(), flush=True)
         tls = ssl.create_default_context()
         for arm in ("out", "tls-out"):
@@ -203,5 +208,7 @@ def container(arms: tuple = ("out", "tls-out", "tls-in"), external: tuple = ()) 
 
 @app.local_entrypoint()
 def main(arms: str = "out,tls-out,tls-in", external: str = "") -> None:
-    for minute, arm, rate, p50, p90 in container.remote(tuple(arms.split(",")), tuple(filter(None, external.split(",")))):
+    for minute, arm, rate, p50, p90 in container.remote(
+        tuple(arms.split(",")), tuple(filter(None, external.split(",")))
+    ):
         print(f"minute {minute:2d} {arm:9s}: {rate:6.0f}/s p50 {p50:6.1f} ms p90 {p90:6.1f} ms")

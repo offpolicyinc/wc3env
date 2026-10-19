@@ -33,7 +33,7 @@ def main() -> None:
     p.add_argument("--opponent", default="ai")
     p.add_argument("--cpu", type=float, default=8)
     p.add_argument("--threads", type=int, default=4, help="the model's torch threads")
-    p.add_argument("--gpu", default="", help="the sandbox's GPU (\"\": none, the model on its CPU)")
+    p.add_argument("--gpu", default="", help='the sandbox\'s GPU ("": none, the model on its CPU)')
     a = p.parse_args()
     _, stream, _code, send = _local()
     args = types.SimpleNamespace(cpu=a.cpu, memory=16384, games=a.games, per_box=1, rest=["--hours", "1"])
@@ -42,17 +42,29 @@ def main() -> None:
         box, at = games_sandbox(args, games_image().run_commands(TORCH if a.gpu else TORCH_CPU), _code(), made,
                                 {"/dataset": modal.Volume.from_name("wc3-dataset")}, a.gpu or None)  # fmt: skip
         print("sandbox in", at, flush=True)
-        stream(box, f"mkdir -p /work/runs && cp /dataset/{a.checkpoint} /work/checkpoint.pt && chown -R 10001:10001 /work", root=True)
+        stream(
+            box,
+            f"mkdir -p /work/runs && cp /dataset/{a.checkpoint} /work/checkpoint.pt && chown -R 10001:10001 /work",
+            root=True,
+        )
         send(box, "/work/runs/plans.npz", (ROOT / "runs" / "plans.npz").read_bytes())
-        script = _preamble("/work:/opt/host", "/sessions/out") + low_video() + (
-            f"python3 -m training.play.evaluate /work/checkpoint.pt --label {a.label or a.checkpoint} --games {a.games} "
-            f"--races {a.races[0]} {a.races[1]} --minutes {a.minutes} --difficulty {a.difficulty} --opponent {a.opponent} "
-            f"--threads {a.threads} --device {'cuda' if a.gpu else 'cpu'} --wine --plans /work/runs/plans.npz | tee /sessions/out/eval.jsonl\n"
-            "python3 -m training.play.evaluate --table /sessions/out/eval.jsonl\n"
+        script = (
+            _preamble("/work:/opt/host", "/sessions/out")
+            + low_video()
+            + (
+                f"python3 -m training.play.evaluate /work/checkpoint.pt --label {a.label or a.checkpoint} --games {a.games} "
+                f"--races {a.races[0]} {a.races[1]} --minutes {a.minutes} --difficulty {a.difficulty} --opponent {a.opponent} "
+                f"--threads {a.threads} --device {'cuda' if a.gpu else 'cpu'} --wine --plans /work/runs/plans.npz | tee /sessions/out/eval.jsonl\n"
+                "python3 -m training.play.evaluate --table /sessions/out/eval.jsonl\n"
+            )
         )
         send(box, "/work/eval.sh", script.encode())
         stream(box, "chown 10001:10001 /work/eval.sh /work/runs/plans.npz", root=True)
-        stream(box, "su worker -s /bin/bash -p -c 'bash /opt/worker/with-display.sh bash /work/eval.sh' 2>&1 | grep --line-buffered -v -E '^(0[0-9a-f]+:|ERROR: +Vk)'", root=True)
+        stream(
+            box,
+            "su worker -s /bin/bash -p -c 'bash /opt/worker/with-display.sh bash /work/eval.sh' 2>&1 | grep --line-buffered -v -E '^(0[0-9a-f]+:|ERROR: +Vk)'",
+            root=True,
+        )
     finally:
         for box in made:
             box.terminate()

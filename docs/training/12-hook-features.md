@@ -33,9 +33,9 @@ the session sends it again. A decision is folded into the player's next features
 Recorded observations (the library):
 
 ```python
-state = native.Features(static)        # one per player per game
-block = state.step(obs, last_action)   # in order; last_action None for a noop or the first step
-masks = native.chosen_masks(block, kind, argument)   # the masks a choice was made under, as the data set stores them
+state = native.Features(static)  # one per player per game
+block = state.step(obs, last_action)  # in order; last_action None for a noop or the first step
+masks = native.chosen_masks(block, kind, argument)  # the masks a choice was made under, as the data set stores them
 ```
 
 The library is built on first use when missing or older than its sources (`training/native/build_features.bat` on

@@ -80,7 +80,9 @@ def evaluate(args) -> None:
             lines = [json.loads(x) for x in cat(f"{run}/out/{vm}/eval.jsonl").splitlines() if x.strip()]
             rows += lines
             if not lines:
-                missing.append(f"{vm} ({checkpoint}): no games yet; its eval.err:\n{cat(f'{run}/out/{vm}/eval.err')[-800:]}")
+                missing.append(
+                    f"{vm} ({checkpoint}): no games yet; its eval.err:\n{cat(f'{run}/out/{vm}/eval.err')[-800:]}"
+                )
         print(summary(rows))
         print("\n".join(missing))
         return
@@ -191,9 +193,15 @@ def main() -> int:
     rec.add_argument("--vms", type=int, default=4, help="CPU VMs recording or converting")
     rec.add_argument("--replays", help="convert: a bucket folder of .w3g replays (gs://...)")
     rec.add_argument("--workers", type=int, default=4, help="games at once per VM (one Wine prefix handles about four)")
-    rec.add_argument("--first-seed", type=int, default=0, help="the games' seeds start here (to record missing ones again)")
-    rec.add_argument("--only", default="", help="convert: only these shares, comma-separated (those of a run that got "
-                     "no VM the first time; same --name and --vms)")
+    rec.add_argument(
+        "--first-seed", type=int, default=0, help="the games' seeds start here (to record missing ones again)"
+    )
+    rec.add_argument(
+        "--only",
+        default="",
+        help="convert: only these shares, comma-separated (those of a run that got "
+        "no VM the first time; same --name and --vms)",
+    )
     rec.add_argument("--maps", default="", help="map names under Maps/FrozenThrone, comma-separated, taken in turn "
                      "((2)EchoIsles,(4)TurtleRock,...; default: Echo Isles)")  # fmt: skip
     args = p.parse_args()

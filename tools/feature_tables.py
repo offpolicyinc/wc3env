@@ -77,9 +77,18 @@ def _masks(ref: dict) -> str:
         for g in u.get("requires_by_count") or []:
             groups.append(put(known(g)))
         fields = [
-            "%du" % _id(code), str(flags), str(gold), str(lumber), str(food), put(known(u.get("requires", []))),
-            str(first_group), str(len(groups) - first_group), put(codes(u.get("trains", []))),
-            put(codes(u.get("researches", []))), put(codes(u.get("upgrades_to", []))), put(codes(u.get("builds", []))),
+            "%du" % _id(code),
+            str(flags),
+            str(gold),
+            str(lumber),
+            str(food),
+            put(known(u.get("requires", []))),
+            str(first_group),
+            str(len(groups) - first_group),
+            put(codes(u.get("trains", []))),
+            put(codes(u.get("researches", []))),
+            put(codes(u.get("upgrades_to", []))),
+            put(codes(u.get("builds", []))),
             put(codes(u.get("potential_hero_abilities", []))),
         ]
         rows.append("    {" + ", ".join(fields) + "},")
@@ -88,7 +97,9 @@ def _masks(ref: dict) -> str:
         levels = upgrades[code]["levels"]
         up_rows.append("    {%du, %d, %d}," % (_id(code), len(up_levels), len(levels)))
         for lv in levels:
-            up_levels.append("    {%d, %d, %s}," % (lv.get("gold", 0), lv.get("lumber", 0), put(known(lv.get("requires", [])))))
+            up_levels.append(
+                "    {%d, %d, %s}," % (lv.get("gold", 0), lv.get("lumber", 0), put(known(lv.get("requires", []))))
+            )
     ab_rows, ab_levels, orders = [], [], []
     for code in sorted(abilities, key=_id):
         a = abilities[code]
@@ -101,52 +112,82 @@ def _masks(ref: dict) -> str:
         ab_rows.append("    {%du, %d, %d, %d, %d, %d}," % (_id(code), a.get("max_level", 3), a.get("required_level", 1),
                                                          skip, first, len(ab_levels) - first))  # fmt: skip
     type_orders = json.loads(TYPE_ORDERS.read_text()) if TYPE_ORDERS.is_file() else {}
-    to_rows = ["    {%du, %s}," % (_id(c), put(sorted(v))) for c, v in sorted(type_orders.items(), key=lambda kv: _id(kv[0]))]
+    to_rows = [
+        "    {%du, %s}," % (_id(c), put(sorted(v))) for c, v in sorted(type_orders.items(), key=lambda kv: _id(kv[0]))
+    ]
     given_orders = {o["order_id"] for a in abilities.values() for lv in a["levels"].values()
                     for o in lv.get("orders", []) if o.get("order_id") is not None}  # fmt: skip
     unknown = [o for o in ORDER_IDS if o not in given_orders]
     args = sorted(argument_ids().items())
     kinds = []
     for t in TYPES:
-        f = (1 if t in HAS_ARGUMENT else 0) | (2 if t != "noop" and t not in PRODUCTION else 0) | (4 if t in ANY_ARGUMENT else 0)
+        f = (
+            (1 if t in HAS_ARGUMENT else 0)
+            | (2 if t != "noop" and t not in PRODUCTION else 0)
+            | (4 if t in ANY_ARGUMENT else 0)
+        )
         kinds.append('    {"%s", %d},' % (t, f))
-    return "\n".join([
-        "/* ---- masks: the tech tree (training/policy/masks.py) */",
-        "typedef struct { int offset, count; } FtList; /* into FT_POOL */",
-        "#define FT_STRUCTURE 1",
-        "#define FT_HERO 2",
-        "#define FT_ACTING 4 /* a structure that moves or attacks: it takes unit orders */",
-        "#define FT_WORKER 8",
-        "typedef struct { unsigned id; int flags, gold, lumber, food; FtList requires; int groups, groups_n;"
-        " FtList trains, researches, upgrades_to, builds, hero_abilities; } FtUnit;",
-        "typedef struct { int gold, lumber; FtList requires; } FtUpgradeLevel;",
-        "typedef struct { unsigned id; int levels, levels_n; } FtUpgrade;",
-        "typedef struct { int level, orders, orders_n; } FtAbilityLevel;",
-        "typedef struct { unsigned id; int max_level, required_level, level_skip, levels, levels_n; } FtAbility;",
-        "typedef struct { unsigned order; int cast; } FtOrder;",
-        "typedef struct { unsigned id; FtList orders; } FtTypeOrders;",
-        "typedef struct { const char *name; int flags; } FtKind; /* 1 takes an argument, 2 has an actor, 4 any argument */",
-        "static const int FT_POOL[] = {" + ", ".join(map(str, pool)) + "};",
-        "static const FtList FT_GROUPS[] = {" + ", ".join(groups) + "};",
-        "static const FtUnit FT_UNITS[] = {", *rows, "};", "#define FT_UNITS_N %d" % len(rows),
-        "static const FtUpgradeLevel FT_UPGRADE_LEVELS[] = {", *up_levels, "};",
-        "static const FtUpgrade FT_UPGRADE_INFO[] = {", *up_rows, "};", "#define FT_UPGRADE_INFO_N %d" % len(up_rows),
-        "static const FtAbilityLevel FT_ABILITY_LEVELS[] = {", *ab_levels, "};",
-        "static const FtOrder FT_ORDERS[] = {", *orders, "};",
-        "static const FtAbility FT_ABILITY_INFO[] = {", *ab_rows, "};", "#define FT_ABILITY_INFO_N %d" % len(ab_rows),
-        "static const FtTypeOrders FT_TYPE_ORDERS[] = {", *to_rows, "};", "#define FT_TYPE_ORDERS_N %d" % len(to_rows),
-        "#define FT_ORDER_FIRST %d" % ORDER_IDS.start,
-        "#define FT_ORDER_COUNT %d" % len(ORDER_IDS),
-        "/* orders no ability in the reference gives */",
-        "static const unsigned FT_UNKNOWN_ORDERS[] = {" + ", ".join("%du" % o for o in unknown) + "};",
-        "#define FT_UNKNOWN_ORDERS_N %d" % len(unknown),
-        "/* argument id -> argument index (masks.argument_ids), sorted by id */",
-        "static const FeatId FT_ARGUMENTS[] = {", *["    {%du, %d}," % (k, v) for k, v in args], "};",
-        "#define FT_ARGUMENTS_N %d" % len(args),
-        "#define FT_N_ARGS %d" % (len(args) + 1),
-        "static const FtKind FT_KINDS[] = {", *kinds, "};",
-        "#define FT_KINDS_N %d" % len(kinds),
-    ])
+    return "\n".join(
+        [
+            "/* ---- masks: the tech tree (training/policy/masks.py) */",
+            "typedef struct { int offset, count; } FtList; /* into FT_POOL */",
+            "#define FT_STRUCTURE 1",
+            "#define FT_HERO 2",
+            "#define FT_ACTING 4 /* a structure that moves or attacks: it takes unit orders */",
+            "#define FT_WORKER 8",
+            "typedef struct { unsigned id; int flags, gold, lumber, food; FtList requires; int groups, groups_n;"
+            " FtList trains, researches, upgrades_to, builds, hero_abilities; } FtUnit;",
+            "typedef struct { int gold, lumber; FtList requires; } FtUpgradeLevel;",
+            "typedef struct { unsigned id; int levels, levels_n; } FtUpgrade;",
+            "typedef struct { int level, orders, orders_n; } FtAbilityLevel;",
+            "typedef struct { unsigned id; int max_level, required_level, level_skip, levels, levels_n; } FtAbility;",
+            "typedef struct { unsigned order; int cast; } FtOrder;",
+            "typedef struct { unsigned id; FtList orders; } FtTypeOrders;",
+            "typedef struct { const char *name; int flags; } FtKind; /* 1 takes an argument, 2 has an actor, 4 any argument */",
+            "static const int FT_POOL[] = {" + ", ".join(map(str, pool)) + "};",
+            "static const FtList FT_GROUPS[] = {" + ", ".join(groups) + "};",
+            "static const FtUnit FT_UNITS[] = {",
+            *rows,
+            "};",
+            "#define FT_UNITS_N %d" % len(rows),
+            "static const FtUpgradeLevel FT_UPGRADE_LEVELS[] = {",
+            *up_levels,
+            "};",
+            "static const FtUpgrade FT_UPGRADE_INFO[] = {",
+            *up_rows,
+            "};",
+            "#define FT_UPGRADE_INFO_N %d" % len(up_rows),
+            "static const FtAbilityLevel FT_ABILITY_LEVELS[] = {",
+            *ab_levels,
+            "};",
+            "static const FtOrder FT_ORDERS[] = {",
+            *orders,
+            "};",
+            "static const FtAbility FT_ABILITY_INFO[] = {",
+            *ab_rows,
+            "};",
+            "#define FT_ABILITY_INFO_N %d" % len(ab_rows),
+            "static const FtTypeOrders FT_TYPE_ORDERS[] = {",
+            *to_rows,
+            "};",
+            "#define FT_TYPE_ORDERS_N %d" % len(to_rows),
+            "#define FT_ORDER_FIRST %d" % ORDER_IDS.start,
+            "#define FT_ORDER_COUNT %d" % len(ORDER_IDS),
+            "/* orders no ability in the reference gives */",
+            "static const unsigned FT_UNKNOWN_ORDERS[] = {" + ", ".join("%du" % o for o in unknown) + "};",
+            "#define FT_UNKNOWN_ORDERS_N %d" % len(unknown),
+            "/* argument id -> argument index (masks.argument_ids), sorted by id */",
+            "static const FeatId FT_ARGUMENTS[] = {",
+            *["    {%du, %d}," % (k, v) for k, v in args],
+            "};",
+            "#define FT_ARGUMENTS_N %d" % len(args),
+            "#define FT_N_ARGS %d" % (len(args) + 1),
+            "static const FtKind FT_KINDS[] = {",
+            *kinds,
+            "};",
+            "#define FT_KINDS_N %d" % len(kinds),
+        ]
+    )
 
 
 def main() -> None:
@@ -168,8 +209,10 @@ def main() -> None:
         "",
     ]
     OUT.write_text("\n".join(parts), encoding="utf-8")
-    print(f"wrote {OUT.relative_to(ROOT)}: {len(units) + len(items)} types, {len(ref['abilities'])} abilities, "
-          f"{len(ref['buffs'])} buffs, {len(ref['upgrades'])} upgrades, {len(workers)} workers")
+    print(
+        f"wrote {OUT.relative_to(ROOT)}: {len(units) + len(items)} types, {len(ref['abilities'])} abilities, "
+        f"{len(ref['buffs'])} buffs, {len(ref['upgrades'])} upgrades, {len(workers)} workers"
+    )
 
 
 if __name__ == "__main__":

@@ -74,7 +74,9 @@ def evaluate(checkpoint, games: int, difficulty: int, minutes: float, temperatur
     agents = Agents(load(checkpoint, device), temperature, seed)
     bank = PlanBank(plans) if plans and os.path.exists(plans) else None
     races = [tuple(pair) if pair else PAIRS[(seed + g) % len(PAIRS)] for g in range(games)]
-    us = [0] * games  # the checkpoint's slot in each game (0, as in self-play: actor.Game.slot); the opponent's is 1 - it
+    us = [
+        0
+    ] * games  # the checkpoint's slot in each game (0, as in self-play: actor.Game.slot); the opponent's is 1 - it
     configs = [
         # recording against the AI: as self-play's ladder games, the AI plays an observed agent slot, so the critic
         # gets the opponent's scalars and the record carries its values
@@ -111,8 +113,11 @@ def evaluate(checkpoint, games: int, difficulty: int, minutes: float, temperatur
         s["enemy_buildings_seen"] = len(seen[i])
         army = u[mine & ((u["flags"] & STRUCTURE) == 0) & ~np.isin(u["type_id"], workers)]
         if len(enemy_buildings) and len(army):
-            d2 = (army["x"][:, None] - enemy_buildings["x"][None]) ** 2 + (army["y"][:, None] - enemy_buildings["y"][None]) ** 2
+            d2 = (army["x"][:, None] - enemy_buildings["x"][None]) ** 2 + (
+                army["y"][:, None] - enemy_buildings["y"][None]
+            ) ** 2
             s["units_near_enemy"] = max(s["units_near_enemy"], int((d2.min(1) < NEAR**2).sum()))
+
     limit = int(minutes * 60 * 1000 / STEP_MS)
     timing = [0.0, 0.0, 0]  # seconds deciding, seconds games spent stepping (sent -> back, summed), decisions
     start = time.perf_counter()
@@ -162,7 +167,9 @@ def evaluate(checkpoint, games: int, difficulty: int, minutes: float, temperatur
                                        [observations[i].features for i in ids],
                                        [theirs[i].features["scalars"] for i in ids] if recorders is not None else None)  # fmt: skip
                 if opponent == "self":  # the other slot decided by the same model, as a seat of its own
-                    answers = agents.act([others[i] for i in ids], [theirs[i] for i in ids], [theirs[i].features for i in ids])
+                    answers = agents.act(
+                        [others[i] for i in ids], [theirs[i] for i in ids], [theirs[i].features for i in ids]
+                    )
                     other = dict(zip(ids, answers))
                 timing[0] += time.perf_counter() - began
                 timing[2] += 1
@@ -174,7 +181,9 @@ def evaluate(checkpoint, games: int, difficulty: int, minutes: float, temperatur
                         recorders[i].add(observations[i], d, np.zeros(1, np.float32))
                     u = us[i]
                     taken = {u: hook_decision(d.action)} if d.action is not None else {}
-                    sent = {u: d.commands} if opponent == "ai" and recorders is None else {u: d.commands, 1 - u: []}  # (recording: the AI's agent slot gets an empty batch)
+                    sent = (
+                        {u: d.commands} if opponent == "ai" and recorders is None else {u: d.commands, 1 - u: []}
+                    )  # (recording: the AI's agent slot gets an empty batch)
                     if opponent == "self":
                         sent[1 - u] = other[i].commands
                         if other[i].action is not None:
@@ -262,7 +271,9 @@ def following(rows: list[dict]) -> str:
     for r in rows:
         if r.get("result") != "failed" and r.get("follow"):
             by[(r.get("checkpoint", ""), r.get("plan", ""))].append(r)
-    out = ["checkpoint                     plan   games   build (of)  control   units (of)  control   upgrades (of)  control"]
+    out = [
+        "checkpoint                     plan   games   build (of)  control   units (of)  control   upgrades (of)  control"
+    ]
     for (name, plan), games in sorted(by.items()):
         mean = lambda which, k: sum(g[which][k] for g in games) / len(games)  # noqa: E731
         out.append(f"{name[-30:]:30s} {plan:6s} {len(games):5d} " + "  ".join(
@@ -276,8 +287,10 @@ def summary(rows: list[dict]) -> str:
     by = defaultdict(list)
     for r in rows:
         by[r.get("checkpoint", "")].append(r)
-    out = ["checkpoint                     games wins defeats timeouts  minutes gold/min lumber/min food_peak kills razed "
-           "attacks seen damage near failed"]
+    out = [
+        "checkpoint                     games wins defeats timeouts  minutes gold/min lumber/min food_peak kills razed "
+        "attacks seen damage near failed"
+    ]
     for name, games in by.items():
         played = [g for g in games if g.get("result") != "failed"]
         n = max(len(played), 1)
@@ -302,8 +315,12 @@ def main() -> int:
     p.add_argument("--label", default="", help="the checkpoint's name in each line (default: its path)")
     p.add_argument("--games", type=int, default=12, help="all at once")
     p.add_argument("--difficulty", type=int, default=0, help="the built-in AI's: 0 easy, 1 normal, 2 insane")
-    p.add_argument("--opponent", choices=("ai", "self"), default="ai", help="self: the checkpoint plays both sides "
-                   "(each line is the game of the side in its \"slot\")")
+    p.add_argument(
+        "--opponent",
+        choices=("ai", "self"),
+        default="ai",
+        help='self: the checkpoint plays both sides (each line is the game of the side in its "slot")',
+    )
     p.add_argument("--minutes", type=float, default=30, help="each game's time limit, in game minutes")
     p.add_argument("--temperature", type=float, default=1.0, help="as the actors sample")
     p.add_argument("--plans", default="runs/plans.npz")
@@ -313,9 +330,15 @@ def main() -> int:
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--replays", default="", help="a folder for each game's replay, as the games see it")
     p.add_argument("--device", default="cpu", help="the model's: cpu or cuda")
-    p.add_argument("--races", nargs=2, metavar=("OWN", "OPPONENT"), help="every game's races (default: every pair in turn)")
-    p.add_argument("--handicap", type=float, default=1.0, help="player 1's hit points as a share of their own (league.HANDICAPS)")
-    p.add_argument("--empty-half", action="store_true", help="every other game with the empty plan (scored against its plan)")
+    p.add_argument(
+        "--races", nargs=2, metavar=("OWN", "OPPONENT"), help="every game's races (default: every pair in turn)"
+    )
+    p.add_argument(
+        "--handicap", type=float, default=1.0, help="player 1's hit points as a share of their own (league.HANDICAPS)"
+    )
+    p.add_argument(
+        "--empty-half", action="store_true", help="every other game with the empty plan (scored against its plan)"
+    )
     args = p.parse_args()
     if args.table:
         rows = [json.loads(x) for f in args.table for x in open(f) if x.strip()]

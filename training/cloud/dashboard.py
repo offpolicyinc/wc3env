@@ -33,7 +33,11 @@ def collect(app: str, log: Path, every: float = 30) -> None:
         try:
             out = subprocess.run([sys.executable, "-m", "modal", "app", "logs", app], capture_output=True, text=True,
                                  encoding="utf-8", errors="replace", timeout=90).stdout  # fmt: skip
-            fresh = [l for l in out.splitlines() if l.strip() and l not in known and not re.search(r"deprecat|set_event", l, re.I)]
+            fresh = [
+                l
+                for l in out.splitlines()
+                if l.strip() and l not in known and not re.search(r"deprecat|set_event", l, re.I)
+            ]
             if fresh:
                 known.update(fresh)
                 with log.open("a", encoding="utf-8") as f:
@@ -117,7 +121,11 @@ def main() -> None:
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
-            body, kind = (json.dumps(parse(log)).encode(), "application/json") if self.path.startswith("/data.json") else (page, "text/html")
+            body, kind = (
+                (json.dumps(parse(log)).encode(), "application/json")
+                if self.path.startswith("/data.json")
+                else (page, "text/html")
+            )
             self.send_response(200)
             self.send_header("Content-Type", kind)
             self.send_header("Content-Length", str(len(body)))

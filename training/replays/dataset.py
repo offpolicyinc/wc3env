@@ -111,7 +111,9 @@ def _write(stream, origin: str, name: str, out: Path) -> dict:
                             waited[player] += age > 0
                         else:
                             entry[1] += 1
-                    append_label(per.setdefault(player, _lists()), before, f_before, label, rows, statics[player], arg_ids)
+                    append_label(
+                        per.setdefault(player, _lists()), before, f_before, label, rows, statics[player], arg_ids
+                    )
                 previous[player] = obs, states[player].step(obs, label)
                 if obs.result:
                     results[player] = obs.result
@@ -269,13 +271,22 @@ def _twice(write_one, *args) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("replays", type=Path, nargs="?", help="a folder of .w3g replays: those listed in its good.txt "
-                        "(tools/check_replays.py), or all of them when it has none (bot games' replays)")
+    parser.add_argument(
+        "replays",
+        type=Path,
+        nargs="?",
+        help="a folder of .w3g replays: those listed in its good.txt "
+        "(tools/check_replays.py), or all of them when it has none (bot games' replays)",
+    )
     parser.add_argument("--bots", type=int, default=0, help="instead: this many games of Warcraft's AI against itself")
     parser.add_argument("--first-seed", type=int, default=0, help="the bot games' seeds start here")
     parser.add_argument("--minutes", type=float, default=30, help="a bot game's time limit, in game minutes")
-    parser.add_argument("--maps", default="", help="bot games' maps, comma-separated names under Maps/FrozenThrone "
-                        "(default: Echo Isles), taken in turn by seed")
+    parser.add_argument(
+        "--maps",
+        default="",
+        help="bot games' maps, comma-separated names under Maps/FrozenThrone "
+        "(default: Echo Isles), taken in turn by seed",
+    )
     parser.add_argument("--out", type=Path, default=Path("runs/dataset"))
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--workers", type=int, default=6)
@@ -284,7 +295,9 @@ def main() -> int:
     args = parser.parse_args()
     args.out.mkdir(parents=True, exist_ok=True)
     if args.bots:
-        seeds = [s for s in range(args.first_seed, args.first_seed + args.bots) if not any(args.out.glob(f"bots-{s}_*.npz"))]
+        seeds = [
+            s for s in range(args.first_seed, args.first_seed + args.bots) if not any(args.out.glob(f"bots-{s}_*.npz"))
+        ]
         maps = tuple(f"Maps/FrozenThrone/{m}.w3x" for m in args.maps.split(",") if m)
         jobs = [(write_bots, s, args.out, args.minutes, maps) for s in seeds]
     else:

@@ -172,7 +172,11 @@ def create(args, zone: str, name: str, machine: str, startup: str, metadata: dic
         image = ["--image-family=pytorch-2-9-cu129-ubuntu-2404-nvidia-580", "--image-project=deeplearning-platform-release",
                  *GPUS[gpu][1], "--maintenance-policy=TERMINATE", f"--boot-disk-size={disk_gb or 100}GB"]  # fmt: skip
     else:
-        image = ["--image-family=ubuntu-2404-lts-amd64", "--image-project=ubuntu-os-cloud", f"--boot-disk-size={disk_gb or 60}GB"]
+        image = [
+            "--image-family=ubuntu-2404-lts-amd64",
+            "--image-project=ubuntu-os-cloud",
+            f"--boot-disk-size={disk_gb or 60}GB",
+        ]
     gcloud("compute", "instances", "create", name, f"--project={args.project}", f"--zone={zone}",
            f"--machine-type={machine}", f"--provisioning-model={'SPOT' if args.spot else 'STANDARD'}",
            "--instance-termination-action=DELETE", f"--max-run-duration={int(hours * 3600)}s", *image, "--no-address",

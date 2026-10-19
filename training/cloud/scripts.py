@@ -32,14 +32,29 @@ export WC3_OUTPUT_DIR="$(winepath -w {log_dir})"
 
 # Warcraft's lowest video options, in the prefix's registry: with drawing off they change nothing the games compute,
 # and a game holds 246 MiB instead of 287 (textures and models it loads anyway; docs/training/9-benchmarks.md)
-LOW_VIDEO = {"texquality": 0, "modeldetail": 0, "animquality": 0, "particles": 0, "lights": 0, "unitshadows": 0,
-             "occlusion": 0, "spellfilter": 0, "texcolordepth": 16, "colordepth": 16, "reswidth": 640, "resheight": 480}
+LOW_VIDEO = {
+    "texquality": 0,
+    "modeldetail": 0,
+    "animquality": 0,
+    "particles": 0,
+    "lights": 0,
+    "unitshadows": 0,
+    "occlusion": 0,
+    "spellfilter": 0,
+    "texcolordepth": 16,
+    "colordepth": 16,
+    "reswidth": 640,
+    "resheight": 480,
+}
 
 
 def low_video() -> str:
     """Shell lines setting LOW_VIDEO in $WINEPREFIX (before prefixes are copied from it)."""
     key = r"HKCU\Software\Blizzard Entertainment\Warcraft III\Video"
-    adds = [f'wine reg add "{key}" /v {name} /t REG_DWORD /d {value} /f > /dev/null 2>&1 || true' for name, value in LOW_VIDEO.items()]
+    adds = [
+        f'wine reg add "{key}" /v {name} /t REG_DWORD /d {value} /f > /dev/null 2>&1 || true'
+        for name, value in LOW_VIDEO.items()
+    ]
     return "\n".join([*adds, "wineserver -w", ""])
 
 
@@ -62,8 +77,11 @@ def evaluation(label: str, games: int, minutes: float, difficulty: int, threads:
                log_dir: str = "/sessions/out") -> str:  # fmt: skip
     """`games` games at once of /work/checkpoint.pt against the built-in AI (training.play.evaluate): one JSON
     line per game in {log_dir}/eval.jsonl as each one ends, labelled with `label`."""
-    return _preamble(python_path, log_dir) + f"""python3 -m training.play.evaluate /work/checkpoint.pt --label '{label}' --wine --games {games} --minutes {minutes} --difficulty {difficulty} --plans /work/plans.npz --threads {threads} > {log_dir}/eval.jsonl 2> {log_dir}/eval.err
+    return (
+        _preamble(python_path, log_dir)
+        + f"""python3 -m training.play.evaluate /work/checkpoint.pt --label '{label}' --wine --games {games} --minutes {minutes} --difficulty {difficulty} --plans /work/plans.npz --threads {threads} > {log_dir}/eval.jsonl 2> {log_dir}/eval.err
 """
+    )
 
 
 def recording(first_seed: int, games: int, workers: int, minutes: float, maps: str = "") -> str:
@@ -99,4 +117,6 @@ def learner_hours(learner_flags: list[str], default: float) -> float:
 def overlay_env(source: str = "/work/src/wc3env") -> str:
     """Root commands putting this checkout's wc3env (the DLL included) over the image's, on both sides: the actors'
     Linux Python (/opt/host) and the games' Windows Python."""
-    return f"cp -r {source}/. /opt/host/wc3env/ && cp -r {source}/. {WINDOWS_SITE}/ && chown -R 10001:10001 {WINDOWS_SITE}"
+    return (
+        f"cp -r {source}/. /opt/host/wc3env/ && cp -r {source}/. {WINDOWS_SITE}/ && chown -R 10001:10001 {WINDOWS_SITE}"
+    )

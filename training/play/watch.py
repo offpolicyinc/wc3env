@@ -22,14 +22,22 @@ from ..policy.features import STEP_MS, env_race
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("replay", type=Path)
-    p.add_argument("--speed", type=float, default=0.0, help="drive it step by step at this many times real time (0: Warcraft's own controls)")
+    p.add_argument(
+        "--speed",
+        type=float,
+        default=0.0,
+        help="drive it step by step at this many times real time (0: Warcraft's own controls)",
+    )
     p.add_argument("--races", nargs=2, default=("orc", "human"), help="the agent's, then the AI's, as when played")
     args = p.parse_args()
     from wc3env.session import GameConfig, GameSession, PlayerConfig
 
     config = GameConfig(
         map=str(args.replay.absolute()),
-        players=(PlayerConfig(0, env_race(args.races[0])), PlayerConfig(1, env_race(args.races[1]), control="computer")),
+        players=(
+            PlayerConfig(0, env_race(args.races[0])),
+            PlayerConfig(1, env_race(args.races[1]), control="computer"),
+        ),
         render=True,
         window_mode="interactive",
         sound=False,

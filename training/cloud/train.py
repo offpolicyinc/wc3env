@@ -32,7 +32,12 @@ VOLUME = modal.Volume.from_name("wc3-dataset")
 
 
 @app.function(
-    gpu="H100", cpu=16, memory=98304, timeout=24 * 3600, volumes={"/dataset": VOLUME}, retries=modal.Retries(max_retries=2),
+    gpu="H100",
+    cpu=16,
+    memory=98304,
+    timeout=24 * 3600,
+    volumes={"/dataset": VOLUME},
+    retries=modal.Retries(max_retries=2),
     secrets=modal_secrets(),
 )
 def cloning(argv: list[str]) -> None:
@@ -61,7 +66,9 @@ def evaluate_run(name: str, games: int, data: str) -> str:
     saved = torch.load(f"/dataset/runs/{name}/last.pt", map_location=device)
     model.load_state_dict(saved["model"])
     acc = evaluate(model, held, 64, device)
-    return f"{name} at step {saved['step']} on {len(held)} held-out files: " + " ".join(f"{k} {v:.3f}" for k, v in acc.items())
+    return f"{name} at step {saved['step']} on {len(held)} held-out files: " + " ".join(
+        f"{k} {v:.3f}" for k, v in acc.items()
+    )
 
 
 def main() -> int:
@@ -70,7 +77,9 @@ def main() -> int:
     p.add_argument("--games", type=int, default=64, help="eval: held-out files")
     p.add_argument("--name", required=True)
     p.add_argument("--steps", type=int, default=7200, help="optimizer steps (~2,400 per pass over the data)")
-    p.add_argument("--data", default="dataset", help="the Volume folders of data set files, comma-separated (dataset3,bots1)")
+    p.add_argument(
+        "--data", default="dataset", help="the Volume folders of data set files, comma-separated (dataset3,bots1)"
+    )
     p.add_argument("rest", nargs="*", help="more training/train/cloning.py flags, after --")
     args = p.parse_args()
     if args.command == "log":
@@ -81,10 +90,19 @@ def main() -> int:
         with modal.enable_output(), app.run():
             print(evaluate_run.remote(args.name, args.games, args.data))
         return 0
-    argv = [*(f"/dataset/{d}" for d in args.data.split(",")), "--out", f"/dataset/runs/{args.name}", "--steps", str(args.steps), *args.rest]
+    argv = [
+        *(f"/dataset/{d}" for d in args.data.split(",")),
+        "--out",
+        f"/dataset/runs/{args.name}",
+        "--steps",
+        str(args.steps),
+        *args.rest,
+    ]
     with modal.enable_output(), app.run(detach=True):
         call = cloning.spawn(argv)
-        print(f"started {args.name}: {call.object_id}; read the log with: python -m training.cloud.train log --name {args.name}")
+        print(
+            f"started {args.name}: {call.object_id}; read the log with: python -m training.cloud.train log --name {args.name}"
+        )
     return 0
 
 

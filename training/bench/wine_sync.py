@@ -11,6 +11,7 @@ off; its ucrtbase also lacks crealf, which numpy 2 calls) and GE-Proton 11 (no w
 
     python -m training.bench.wine_sync --games 64 --steps 300 --wait-ms 50 --cpu 16 --only stable,proton-fsync,stable,proton-fsync
 """
+
 import argparse
 import sys
 import types
@@ -32,7 +33,7 @@ WINEDEBUG = ""
 MAXCLIENTS = 0
 NO_DRIVERS = ";winebus.sys,wineusb.sys,winebth.sys=d"
 
-BENCH = r'''
+BENCH = r"""
 import os, sys, time
 from wc3env.session import GameConfig, MatchSetup, PlayerConfig
 from wc3env.vector import VectorSession, wine_workers
@@ -58,7 +59,7 @@ hz, ncpu = os.sysconf("SC_CLK_TCK"), os.cpu_count()
 work = dt / steps * 1000 - wait * 1000
 print(f"{os.environ['VARIANT']:<22} {games} games: {work:.1f} ms a round besides the wait, "
       f"CPU {busy / hz / (games * steps) * 1000:.2f} ms a game-step, {busy / hz / dt:.1f} of {ncpu} threads busy", flush=True)
-'''
+"""
 
 
 def wine_env(wine: str) -> str:
@@ -68,7 +69,9 @@ def wine_env(wine: str) -> str:
 
 def make_prefix(wine: str) -> str:
     """Shell lines making `wine`'s prefix like the image's: Python, the image's wheels, this checkout's wc3env."""
-    return wine_env(wine) + rf"""wine wineboot -u 2>&1 | tail -3; wineserver -w
+    return (
+        wine_env(wine)
+        + rf"""wine wineboot -u 2>&1 | tail -3; wineserver -w
 wine 'Z:\opt\python-installer.exe' /quiet InstallAllUsers=0 'TargetDir=C:\Python311' Include_launcher=0 Include_test=0 Include_doc=0 Include_tcltk=0 Include_pip=1 > /dev/null 2>&1
 for wheel in /opt/wheels/environment/*.whl; do wine 'C:\Python311\python.exe' -m pip install --no-index --no-deps "$(wine winepath -w "$wheel")" > /dev/null 2>&1; done
 cp -r /opt/env/wc3env/. $WINEPREFIX/{SITE}/
@@ -77,6 +80,7 @@ ln -sfn /opt/game $WINEPREFIX/drive_c/wc3
 wine 'C:\Python311\python.exe' -c 'import numpy, wc3env; print("{wine} prefix: ok")'
 wineserver -w
 """
+    )
 
 
 def variant(name: str, wine: str, fsync: bool, drivers: bool, games: int, steps: int, wait: int) -> str:
@@ -89,15 +93,22 @@ def variant(name: str, wine: str, fsync: bool, drivers: bool, games: int, steps:
     if not drivers:
         lines.append(f'export WINEDLLOVERRIDES="$WINEDLLOVERRIDES{NO_DRIVERS}"')
     if MAXCLIENTS:  # a display of its own that takes more X clients than Xvfb's default 256
-        lines += [f"Xvfb :98 -screen 0 1024x768x24 -nolisten tcp -maxclients {MAXCLIENTS} > /tmp/xvfb98.log 2>&1 &", "XPID=$!; sleep 2",
-                  "export DISPLAY=:98"]
+        lines += [
+            f"Xvfb :98 -screen 0 1024x768x24 -nolisten tcp -maxclients {MAXCLIENTS} > /tmp/xvfb98.log 2>&1 &",
+            "XPID=$!; sleep 2",
+            "export DISPLAY=:98",
+        ]
     else:
-        lines.append("XPID=$(pgrep -x Xvfb 2>/dev/null || ls -l /proc/*/exe 2>/dev/null | grep Xvfb | sed 's#.*/proc/\\([0-9]*\\)/exe.*#\\1#' | head -1)")
+        lines.append(
+            "XPID=$(pgrep -x Xvfb 2>/dev/null || ls -l /proc/*/exe 2>/dev/null | grep Xvfb | sed 's#.*/proc/\\([0-9]*\\)/exe.*#\\1#' | head -1)"
+        )
     # the display's connections (its sockets) 90 s in: the games are up by then
-    lines += [f"(sleep 90; echo \"{name}: $(ls -l /proc/$XPID/fd 2>/dev/null | grep -c socket) X connections\" >> /sessions/out/bench.txt) &",
-              f"python3 /work/bench.py {games} {steps} {wait} >> /sessions/out/bench.txt 2>> /sessions/out/{name}.err || echo {name} failed",
-              # every worker prefix has a wineserver of its own: a failed run leaves games in all of them
-              "for p in $WINEPREFIX $TMPDIR/wine-prefix-*; do WINEPREFIX=$p wineserver -k 2>/dev/null || true; done; sleep 5"]
+    lines += [
+        f'(sleep 90; echo "{name}: $(ls -l /proc/$XPID/fd 2>/dev/null | grep -c socket) X connections" >> /sessions/out/bench.txt) &',
+        f"python3 /work/bench.py {games} {steps} {wait} >> /sessions/out/bench.txt 2>> /sessions/out/{name}.err || echo {name} failed",
+        # every worker prefix has a wineserver of its own: a failed run leaves games in all of them
+        "for p in $WINEPREFIX $TMPDIR/wine-prefix-*; do WINEPREFIX=$p wineserver -k 2>/dev/null || true; done; sleep 5",
+    ]
     if MAXCLIENTS:
         lines.append("kill $XPID 2>/dev/null || true; sleep 1")
     lines.append(")")
@@ -105,8 +116,10 @@ def variant(name: str, wine: str, fsync: bool, drivers: bool, games: int, steps:
 
 
 VARIANTS = [  # name, Wine ("": the image's), fsync, the bus drivers loaded
-    ("stable", "", False, True), ("stable-nodrivers", "", False, False),
-    ("proton", "proton", False, False), ("proton-fsync", "proton", True, False),
+    ("stable", "", False, True),
+    ("stable-nodrivers", "", False, False),
+    ("proton", "proton", False, False),
+    ("proton-fsync", "proton", True, False),
     ("tkg-fsync", "tkg", True, False),
 ]
 
@@ -119,7 +132,9 @@ def main() -> None:
     p.add_argument("--cpu", type=float, default=16)
     p.add_argument("--only", default="", help="comma-separated variant names, run in this order (repeats allowed)")
     p.add_argument("--winedebug", default="", help="WINEDEBUG for the games, to debug a variant (e.g. err+all)")
-    p.add_argument("--maxclients", type=int, default=0, help="the games on an Xvfb of their own taking this many X clients")
+    p.add_argument(
+        "--maxclients", type=int, default=0, help="the games on an Xvfb of their own taking this many X clients"
+    )
     a = p.parse_args()
     global WINEDEBUG, MAXCLIENTS
     WINEDEBUG, MAXCLIENTS = a.winedebug, a.maxclients

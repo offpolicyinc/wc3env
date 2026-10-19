@@ -59,7 +59,9 @@ def check(path: str) -> dict:
             out[f"labels: {head}"] += int(has.sum())
             out[f"labels: {head} allowed"] += int(mask[steps[has], v[has]].sum())
         worst = 0.0
-        for s, expected in zip(d.get("check_steps", ()), d.get("check_maps", ())):  # files from before the hook's features
+        for s, expected in zip(
+            d.get("check_steps", ()), d.get("check_maps", ())
+        ):  # files from before the hook's features
             got = data.step(int(s), map=True)["map"][: len(expected)]  # files written before a channel was added
             worst = max(worst, float(np.abs(got - expected.astype(np.float32)).max()))
         out["maps checked"] += len(d.get("check_steps", ()))

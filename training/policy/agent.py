@@ -64,7 +64,9 @@ class Decision:
     masks: dict  # type, argument, actor, target: the masks the choices were sampled under
     log_prob: float  # of the whole decision (noop included), at temperature 1 for self-play
     failed: str = ""  # "<type>/<head>" when an action was chosen but that head had no legal choice: it became a noop
-    value: np.ndarray | float = float("nan")  # the critic's estimates [CRITIC], when act() was given the opponents' scalars
+    value: np.ndarray | float = float(
+        "nan"
+    )  # the critic's estimates [CRITIC], when act() was given the opponents' scalars
     chunk_start: bool = False  # the first step of one of the seat's 64-step chunks
     start_state: list | None = None  # then: the model's memory before it (numpy, one array per SSM layer; None at
     # the game's start)
@@ -75,8 +77,9 @@ class Agents:
     model's part in a Model, in this process or another (training/selfplay/inference.py: one process on the GPU
     deciding for every actor)."""
 
-    def __init__(self, model: Policy | None = None, temperature: float = 1.0, seed: int = 0, remote=None,
-                 compile: bool = False):
+    def __init__(
+        self, model: Policy | None = None, temperature: float = 1.0, seed: int = 0, remote=None, compile: bool = False
+    ):
         """`model` to run it here; or `remote`, where it runs: send(inputs) passes a step's inputs on, receive()
         returns the outputs of the oldest step sent (training/selfplay/actor.py: the inference process)."""
         self.model = Model(model, temperature, seed, compile=compile) if model is not None else None
@@ -84,7 +87,9 @@ class Agents:
         self.args = {i: v for v, i in argument_ids().items()}
         self.sent: set = set()  # the map data the model has (by _map_key)
 
-    def act(self, seats: list[Seat], observations: list, blocks: list, opponent_scalars: list | None = None) -> list[Decision]:
+    def act(
+        self, seats: list[Seat], observations: list, blocks: list, opponent_scalars: list | None = None
+    ) -> list[Decision]:
         """One step for every seat; with `opponent_scalars` (each seat's opponent's block["scalars"]), also the
         critic's estimate of each seat's position."""
         return self.end(self.begin(seats, observations, blocks, opponent_scalars))
@@ -382,8 +387,10 @@ class Model:
             return "no batches"
         mean = {k: float(np.mean(t[k])) for k in ("prep", "step", "starts")}
         rows = {r: t["rows"].count(r) for r in sorted(set(t["rows"]))}
-        return (f"prep {mean['prep']:.1f}, step {mean['step']:.1f} (p90 {np.percentile(t['step'], 90):.1f}), starts "
-                f"{mean['starts']:.1f}; rows {rows}; {len(t['captures'])} graphs made {sum(t['captures']):.0f} ms")
+        return (
+            f"prep {mean['prep']:.1f}, step {mean['step']:.1f} (p90 {np.percentile(t['step'], 90):.1f}), starts "
+            f"{mean['starts']:.1f}; rows {rows}; {len(t['captures'])} graphs made {sum(t['captures']):.0f} ms"
+        )
 
     def _step(self, b: dict, unit_rows: int, features: list[str]) -> dict:
         """One step for the seats in the device buffers `b`, all on the device in fixed shapes (no copy to the

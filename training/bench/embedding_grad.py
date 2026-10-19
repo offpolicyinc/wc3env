@@ -49,7 +49,15 @@ def bench() -> str:
     chunks = [grow(chunks[i % len(chunks)], rng) for i in range(32)]  # one minibatch
     rows = 128  # the row size of a batch whose fullest step has 65-128 units
     fields = {}
-    for name in ("unit_type", "unit_queue", "unit_owner", "unit_order", "unit_inventory", "unit_buffs", "unit_abilities"):
+    for name in (
+        "unit_type",
+        "unit_queue",
+        "unit_owner",
+        "unit_order",
+        "unit_inventory",
+        "unit_buffs",
+        "unit_abilities",
+    ):
         steps = []
         for c in chunks:
             data = ReplayData(c)
@@ -63,8 +71,10 @@ def bench() -> str:
               ("order", p.order_emb.weight, fields["unit_order"].clamp(max=15), False),
               ("items", p.item_emb.weight, fields["unit_inventory"], True), ("buffs", p.buff_emb.weight, fields["unit_buffs"], True),
               ("abilities", p.ability_emb.weight, fields["unit_abilities"], True)]  # fmt: skip
-    say(f"{len(fields['unit_type'])} unit rows ({MAX_UNITS} max, {rows} kept); share of index 0: "
-        + ", ".join(f"{n} {float((ids == 0).float().mean()):.2f}" for n, _, ids, _ in tables))
+    say(
+        f"{len(fields['unit_type'])} unit rows ({MAX_UNITS} max, {rows} kept); share of index 0: "
+        + ", ".join(f"{n} {float((ids == 0).float().mean()):.2f}" for n, _, ids, _ in tables)
+    )
 
     class OneHot(torch.autograd.Function):
         @staticmethod
@@ -106,7 +116,9 @@ def bench() -> str:
             return out, None, None
 
     ways = {
-        "current": lambda w, ids, bag: F.embedding_bag(ids, w, mode="sum", padding_idx=0) if bag else F.embedding(ids, w),
+        "current": lambda w, ids, bag: (
+            F.embedding_bag(ids, w, mode="sum", padding_idx=0) if bag else F.embedding(ids, w)
+        ),
         "onehot32": lambda w, ids, bag: OneHot.apply(w, ids, bag, torch.float32),
         "onehot16": lambda w, ids, bag: OneHot.apply(w, ids, bag, torch.bfloat16),
         "index_add": lambda w, ids, bag: IndexAdd.apply(w, ids, bag),

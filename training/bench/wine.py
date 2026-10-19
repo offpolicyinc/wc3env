@@ -1,6 +1,7 @@
 """The games' own cost under Wine, in a Modal sandbox like self-play's (4 cores, 32 GiB): N no-op games stepped
 (250 ms steps, speed 2048) through wine_workers with no model and no network; per run the wall time per step,
 the sandbox's CPU time per game-step (from /proc/stat) and how busy its cores were."""
+
 import sys
 import types
 from pathlib import Path
@@ -10,7 +11,7 @@ sys.path.insert(0, str(ROOT))
 from training.cloud.scripts import _preamble  # noqa: E402
 from training.cloud.selfplay import _local, games_image, games_sandbox  # noqa: E402
 
-BENCH = r'''
+BENCH = r"""
 import os, sys, time
 from wc3env.session import GameConfig, MatchSetup, PlayerConfig
 from wc3env.vector import VectorSession, wine_workers, link_prefix
@@ -35,7 +36,7 @@ busy = (b[0] - a[0]) - (b[1] - a[1])
 hz, ncpu = os.sysconf("SC_CLK_TCK"), os.cpu_count()
 print(f"{games} games: {dt / steps * 1000:.1f} ms wall per step, {games * steps / dt:.0f} game-steps/s; "
       f"CPU {busy / hz / (games * steps) * 1000:.1f} ms per game-step; cores busy {busy / (b[0] - a[0]) * 100:.0f}% of {ncpu} threads")
-'''
+"""
 
 
 def main() -> None:
@@ -46,8 +47,14 @@ def main() -> None:
     try:
         box, _ = games_sandbox(args, games_image(), _code(), made)
         _send(box, "/work/bench.py", BENCH.encode())
-        script = _preamble("/work:/opt/host", "/sessions/out") + "\n".join(
-            f"python3 /work/bench.py {n} 300 >> /sessions/out/bench.txt 2>> /sessions/out/bench.err" for n in (1, 2, 8, 16, 32)) + "\n"
+        script = (
+            _preamble("/work:/opt/host", "/sessions/out")
+            + "\n".join(
+                f"python3 /work/bench.py {n} 300 >> /sessions/out/bench.txt 2>> /sessions/out/bench.err"
+                for n in (1, 2, 8, 16, 32)
+            )
+            + "\n"
+        )
         _send(box, "/work/bench.sh", script.encode())
         stream(box, "chown 10001:10001 /work/bench.sh", root=True)
         p = box.exec("bash", "-c", "su worker -s /bin/bash -p -c 'bash /opt/worker/with-display.sh bash /work/bench.sh'; "

@@ -1,25 +1,47 @@
 """python -m training.play.replay_behavior <game.w3g>: Play a replay back headless (handicap re-staged by reset); player 0's scouting, attacks in the enemy's half, fights, and each minute its army (combat units: not workers or
 buildings), how much of it is in the enemy's half, and its workers.
 Echo Isles has two starts: ours is the one nearest our first units, theirs the other. Their half: nearer their start."""
-import json, sys
+
+import json
+import sys
 from pathlib import Path
+
 import numpy as np
-from wc3env.binary import OWN, STRUCTURE, DEAD, EVENT_KINDS
-from wc3env.session import GameConfig, GameSession, PlayerConfig
+
 from training.policy.features import STEP_MS, env_race, start_points, worker_types
 from training.selfplay.reward import CHANNELS, Shaping
+from wc3env.binary import DEAD, EVENT_KINDS, OWN, STRUCTURE
+from wc3env.session import GameConfig, GameSession, PlayerConfig
 
 DAMAGED = next(k for k, n in EVENT_KINDS.items() if n == "damaged")
 DEATH = next(k for k, n in EVENT_KINDS.items() if n == "death")
 WORKERS = list(worker_types())
 GAP = 20.0  # seconds without damage between us and them that end a fight
 path = Path(sys.argv[1]).absolute()
-config = GameConfig(map=str(path), players=(PlayerConfig(0, env_race("orc")), PlayerConfig(1, env_race("orc"), control="computer")),
-                    render=False, sound=False, step_ms=STEP_MS, observation="binary")
+config = GameConfig(
+    map=str(path),
+    players=(PlayerConfig(0, env_race("orc")), PlayerConfig(1, env_race("orc"), control="computer")),
+    render=False,
+    sound=False,
+    step_ms=STEP_MS,
+    observation="binary",
+)
 starts = np.array(start_points("Maps/FrozenThrone/(2)EchoIsles.w3x"))
-out = {"game": path.stem, "scouted": None, "saw_building": None, "first_hit_their_half": None, "dealt_their_half": 0.0,
-       "dealt_our_half": 0.0, "taken": 0.0, "fights": [], "kills": 0, "losses": 0,
-       "per_minute": [], "reward_dealt": 0.0, "reward_taken": 0.0}  # [minute, army, army in their half, workers]; the reward's channels, unweighted
+out = {
+    "game": path.stem,
+    "scouted": None,
+    "saw_building": None,
+    "first_hit_their_half": None,
+    "dealt_their_half": 0.0,
+    "dealt_our_half": 0.0,
+    "taken": 0.0,
+    "fights": [],
+    "kills": 0,
+    "losses": 0,
+    "per_minute": [],
+    "reward_dealt": 0.0,
+    "reward_taken": 0.0,
+}  # [minute, army, army in their half, workers]; the reward's channels, unweighted
 owner, pos, mine_s, theirs_s = {}, {}, None, None
 fight = None
 shaping = Shaping(None)  # dealt and taken as self-play pays them (no plan: build, units, upgrades pay nothing)
@@ -50,8 +72,17 @@ with GameSession(config) as s:
         if theirs_s is not None and int(t // 60) >= len(out["per_minute"]):
             body = mine & ((u["flags"] & STRUCTURE) == 0)
             army = body & ~np.isin(u["type_id"], WORKERS)
-            far = np.hypot(u["x"] - theirs_s[0], u["y"] - theirs_s[1]) < np.hypot(u["x"] - mine_s[0], u["y"] - mine_s[1])
-            out["per_minute"].append([int(t // 60), int(army.sum()), int((army & far).sum()), int((body & np.isin(u["type_id"], WORKERS)).sum())])
+            far = np.hypot(u["x"] - theirs_s[0], u["y"] - theirs_s[1]) < np.hypot(
+                u["x"] - mine_s[0], u["y"] - mine_s[1]
+            )
+            out["per_minute"].append(
+                [
+                    int(t // 60),
+                    int(army.sum()),
+                    int((army & far).sum()),
+                    int((body & np.isin(u["type_id"], WORKERS)).sum()),
+                ]
+            )
         if out["saw_building"] is None and ((u["owner"] == 1) & ((u["flags"] & STRUCTURE) != 0) & alive).any():
             out["saw_building"] = round(t / 60, 1)
         for e in o.events:
@@ -77,13 +108,17 @@ with GameSession(config) as s:
                 fight["dealt" if ours_hit else "taken"] += v
                 fight["their_half"] |= bool(their_half)
             elif k == DEATH:
-                if owner.get(uid) == 1: out["kills"] += 1
-                elif owner.get(uid) == 0: out["losses"] += 1
+                if owner.get(uid) == 1:
+                    out["kills"] += 1
+                elif owner.get(uid) == 0:
+                    out["losses"] += 1
         if done:
             break
 out["result"] = o.result if o is not None else None
 for f in out["fights"]:
-    f.update(start=round(f["start"] / 60, 1), end=round(f["end"] / 60, 1), dealt=round(f["dealt"]), taken=round(f["taken"]))
+    f.update(
+        start=round(f["start"] / 60, 1), end=round(f["end"] / 60, 1), dealt=round(f["dealt"]), taken=round(f["taken"])
+    )
 for k in ("dealt_their_half", "dealt_our_half", "taken"):
     out[k] = round(out[k])
 out["reward_dealt"], out["reward_taken"] = round(out["reward_dealt"], 2), round(out["reward_taken"], 2)

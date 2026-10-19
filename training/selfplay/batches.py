@@ -49,7 +49,7 @@ class _Slot:
     def _make(self, size: int) -> None:
         self.path = os.path.join(self.folder, f"slot-{self.k}-{self.generation}.bin")
         self.pages = np.memmap(self.path, np.uint8, "w+", shape=(size,))
-        self.pages[:: 4096] = 0  # every page in memory now, not on each batch's first touch
+        self.pages[::4096] = 0  # every page in memory now, not on each batch's first touch
 
     def write(self, chunks: list[dict], widths: list[int]) -> dict:
         """learner.prepare's batch, written here; each array replaced by (offset, shape, dtype) in self.path."""
@@ -79,6 +79,7 @@ class _Slot:
 
 def read(batch: dict, pages: np.memmap) -> dict:
     """The learner's side: the batch with each (offset, shape, dtype) as a tensor on its file's pages (no copy)."""
+
     def tensor(item):
         offset, shape, dtype = item
         return torch.from_numpy(np.ndarray(shape, np.dtype(dtype), buffer=pages, offset=offset))
@@ -207,13 +208,23 @@ class Batches:
     """The learner's handle on the batch process: get() the next batch, set `version` after each update. A process
     that died is started again (the chunks it held are lost; the actors keep sending)."""
 
-    def __init__(self, listen: str, authkey: bytes, batch: int, buffer: int, max_lag: int, widths: list[int],
-                 scoring: tuple | None = None):
+    def __init__(
+        self,
+        listen: str,
+        authkey: bytes,
+        batch: int,
+        buffer: int,
+        max_lag: int,
+        widths: list[int],
+        scoring: tuple | None = None,
+    ):
         # in memory (Linux's /dev/shm): a batch written to the container's /tmp, on disk, took 0.8 s of its 1.1
         root = "/dev/shm" if os.path.isdir("/dev/shm") else tempfile.gettempdir()
         if root == "/dev/shm":
             _remove_orphans(root)
-        folder = self.folder = tempfile.mkdtemp(prefix="wc3-batches-", dir=root)  # its own: no other learner reads these
+        folder = self.folder = tempfile.mkdtemp(
+            prefix="wc3-batches-", dir=root
+        )  # its own: no other learner reads these
         self.mapped: dict = {}  # path -> its pages, mapped once here (and registered with CUDA)
         self.ctx = mp.get_context("spawn")  # the learner's CUDA context must not be forked
         self.version = self.ctx.Value("i", 0)
@@ -224,7 +235,9 @@ class Batches:
 
     def _start(self) -> None:
         self.ready = self.ctx.Queue(maxsize=1)
-        self.proc = self.ctx.Process(target=_serve, args=(*self.args, self.version, self.counts, self.ready), daemon=True)
+        self.proc = self.ctx.Process(
+            target=_serve, args=(*self.args, self.version, self.counts, self.ready), daemon=True
+        )
         self.proc.start()
 
     def get(self, timeout: float) -> dict | None:

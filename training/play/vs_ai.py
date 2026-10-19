@@ -48,18 +48,34 @@ def _describe(obs, a: Action, commands: list[dict]) -> str:
     where = f" at ({a.x:.0f},{a.y:.0f})" if a.x is not None else f" on {name(a.target)}" if a.target else ""
     who = f" by {name(a.actor)}" + (f" +{a.size or 'all'}" if a.size != 1 else "") if a.actor else ""
     who += " (shift)" if a.queued else ""
-    return (f"{obs.game_time_seconds:6.1f}s gold {obs.gold:4d} food {obs.food_used}/{obs.food_cap}: "
-            f"{a.type} {arg}{who}{where} -> {len(commands)} commands")
+    return (
+        f"{obs.game_time_seconds:6.1f}s gold {obs.gold:4d} food {obs.food_used}/{obs.food_cap}: "
+        f"{a.type} {arg}{who}{where} -> {len(commands)} commands"
+    )
 
 
-def play(model: Policy, map_name: str, races: tuple[str, str], difficulty: int, minutes: float, seed: int,
-         plan: dict | None, temperature: float, watch: bool = False, replay: Path | None = None,
-         trace: Path | None = None, itself: bool = False) -> dict:
+def play(
+    model: Policy,
+    map_name: str,
+    races: tuple[str, str],
+    difficulty: int,
+    minutes: float,
+    seed: int,
+    plan: dict | None,
+    temperature: float,
+    watch: bool = False,
+    replay: Path | None = None,
+    trace: Path | None = None,
+    itself: bool = False,
+) -> dict:
     from wc3env.session import GameConfig, GameSession, MatchSetup, PlayerConfig
 
     config = GameConfig(
         map=map_name,
-        players=(PlayerConfig(0, env_race(races[0])), PlayerConfig(1, env_race(races[1]), control="agent" if itself else "computer")),
+        players=(
+            PlayerConfig(0, env_race(races[0])),
+            PlayerConfig(1, env_race(races[1]), control="agent" if itself else "computer"),
+        ),
         ai_difficulty=None if itself else difficulty,
         setup=MatchSetup(seed=seed, randomize_starts=True),
         render=watch,
@@ -68,12 +84,16 @@ def play(model: Policy, map_name: str, races: tuple[str, str], difficulty: int, 
         background_visible=watch,  # shown, but kept out of the desktop's input: an unfocused interactive window stalled the clock
         step_ms=STEP_MS,
         observation="binary",
-        features={0: hook_spec(Static.load(map_name, races)),
-                  **({1: hook_spec(Static.load(map_name, races[::-1]))} if itself else {})},
+        features={
+            0: hook_spec(Static.load(map_name, races)),
+            **({1: hook_spec(Static.load(map_name, races[::-1]))} if itself else {}),
+        },
     )
     agents = Agents(model, temperature, seed)
     seat = Seat(Static.load(map_name, races), plan)
-    other = Seat(Static.load(map_name, races[::-1]), None) if itself else None  # with `itself`: the same model plays slot 1
+    other = (
+        Seat(Static.load(map_name, races[::-1]), None) if itself else None
+    )  # with `itself`: the same model plays slot 1
     lines: list[str] = []
     decided, failed = Counter(), Counter()
     refused, commands, result, obs = Counter(), 0, "", None
@@ -98,7 +118,9 @@ def play(model: Policy, map_name: str, races: tuple[str, str], difficulty: int, 
                 result = obs.result or "ended"
                 break
             if itself:
-                decision, theirs = agents.act([seat, other], [obs, observations[1]], [obs.features, observations[1].features])
+                decision, theirs = agents.act(
+                    [seat, other], [obs, observations[1]], [obs.features, observations[1].features]
+                )
                 other_orders = theirs.commands
             else:
                 decision = agents.act([seat], [obs], [obs.features])[0]
@@ -141,7 +163,9 @@ def main() -> int:
     p.add_argument("--races", nargs=2, default=("orc", "human"), help="the agent's, then the AI's")
     p.add_argument("--difficulty", type=int, default=0, help="0 easy, 1 normal, 2 insane")
     p.add_argument("--minutes", type=float, default=30, help="training's games last up to 30 minutes too")
-    p.add_argument("--temperature", type=float, default=0.8, help="below 1 favours the likelier choices (AlphaStar played at 0.8)")
+    p.add_argument(
+        "--temperature", type=float, default=0.8, help="below 1 favours the likelier choices (AlphaStar played at 0.8)"
+    )
     p.add_argument("--plan-from", help="a data set file whose plan the agent is given (none: the empty plan)")
     p.add_argument("--plans", help="a plan bank (training/cloud/plans.py): each game a won pro plan of the matchup")
     p.add_argument("--seed", type=int, default=0)
@@ -167,9 +191,26 @@ def main() -> int:
     for g in range(args.games):
         if bank is not None:
             plan = bank.sample(args.races[0], args.races[1], rng)
-        replay = args.replays.absolute() / f"{Path(args.checkpoint).parent.name}-{args.races[0]}-vs-{args.races[1]}-{args.seed + g}.w3g" if args.replays else None
-        r = play(model, args.map, tuple(args.races), args.difficulty, args.minutes, args.seed + g, plan, args.temperature,
-                 args.watch, replay, args.trace / f"game-{args.seed + g}.txt" if args.trace else None, args.itself)
+        replay = (
+            args.replays.absolute()
+            / f"{Path(args.checkpoint).parent.name}-{args.races[0]}-vs-{args.races[1]}-{args.seed + g}.w3g"
+            if args.replays
+            else None
+        )
+        r = play(
+            model,
+            args.map,
+            tuple(args.races),
+            args.difficulty,
+            args.minutes,
+            args.seed + g,
+            plan,
+            args.temperature,
+            args.watch,
+            replay,
+            args.trace / f"game-{args.seed + g}.txt" if args.trace else None,
+            args.itself,
+        )
         if replay:
             r["replay"] = str(replay)
         print(f"game {g}: {r}", flush=True)

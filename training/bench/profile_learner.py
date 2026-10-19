@@ -62,7 +62,9 @@ def profile() -> str:
         out.write(line + "\n")
 
     traces = pickle.load(open("/root/obs.pkl", "rb"))
-    chunks = play(Agents(load("/root/model.pt", "cuda"), 1.0, 0), list(range(8)), 385, traces, Static.load(MAP, ("orc", "human")))
+    chunks = play(
+        Agents(load("/root/model.pt", "cuda"), 1.0, 0), list(range(8)), 385, traces, Static.load(MAP, ("orc", "human"))
+    )
     for k, c in enumerate(chunks):  # some rewards, so the advantages are not all zero
         c["reward"][-1] = float((-1, 0, 1)[k % 3])
     rng = np.random.default_rng(0)
@@ -89,7 +91,11 @@ def profile() -> str:
         size = _row_size(int(b["unit_count"].max()))
         with torch.no_grad(), torch.autocast("cuda", torch.bfloat16):
             padded = float32(learner.model(b, st, rows=size))
-            packed = float32(learner.model(b, st, rows=size, pack=pack(b["unit_count"].reshape(-1).cpu().numpy(), size, learner.device)))
+            packed = float32(
+                learner.model(
+                    b, st, rows=size, pack=pack(b["unit_count"].reshape(-1).cpu().numpy(), size, learner.device)
+                )
+            )
             lp_padded = learner.model.log_probs(b, padded)[0]
             lp_packed = learner.model.log_probs(b, packed)[0]
         with torch.no_grad():  # float32 throughout (no autocast): the answer both bfloat16 ways round
@@ -101,18 +107,24 @@ def profile() -> str:
             d = (x - y)[live].abs()
             return f"max {float(d.max()):.1e} p99 {float(d.quantile(0.99)):.1e}"
 
-        say(f"core scale {float(exact['core'].abs().max()):.1f}; core diff from float32: padded {float((padded['core'] - exact['core']).abs().max()):.1e}, "
-            f"packed {float((packed['core'] - exact['core']).abs().max()):.1e}; packed vs padded {float((padded['core'] - packed['core']).abs().max()):.1e}")
-        say(f"log-prob from float32: padded {gap(lp_padded, lp_exact)}; packed {gap(lp_packed, lp_exact)}; packed vs padded {gap(lp_packed, lp_padded)}")
+        say(
+            f"core scale {float(exact['core'].abs().max()):.1f}; core diff from float32: padded {float((padded['core'] - exact['core']).abs().max()):.1e}, "
+            f"packed {float((packed['core'] - exact['core']).abs().max()):.1e}; packed vs padded {float((padded['core'] - packed['core']).abs().max()):.1e}"
+        )
+        say(
+            f"log-prob from float32: padded {gap(lp_padded, lp_exact)}; packed {gap(lp_packed, lp_exact)}; packed vs padded {gap(lp_packed, lp_padded)}"
+        )
 
     began = time.perf_counter()
     for _ in range(3):
         stats = learner.step(batch, host)
     torch.cuda.synchronize()
     wall = (time.perf_counter() - began) / 3
-    say(f"update {wall:.3f} s ({args.batch * 64 / wall:.0f} steps/s); laps "
+    say(
+        f"update {wall:.3f} s ({args.batch * 64 / wall:.0f} steps/s); laps "
         f"{ {k: round(v, 3) for k, v in stats.items() if k.startswith('time_')} }; units per step "
-        f"{stats['units_mean']:.0f} mean, {stats['units_max']:.0f} at most")
+        f"{stats['units_mean']:.0f} mean, {stats['units_max']:.0f} at most"
+    )
 
     with torch_profile(activities=[ProfilerActivity.CPU, ProfilerActivity.CUDA]) as prof:
         learner.step(batch, host)
@@ -121,8 +133,10 @@ def profile() -> str:
     kernels = [e for e in events if e.device_type == torch.autograd.DeviceType.CUDA]
     gpu_s = sum(e.self_device_time_total for e in kernels) / 1e6
     launches = sum(e.count for e in kernels)
-    say(f"GPU busy {gpu_s:.3f} s of {wall:.3f} ({gpu_s / wall:.0%}); {launches} kernels, "
-        f"{gpu_s / max(launches, 1) * 1e6:.1f} us each on average")
+    say(
+        f"GPU busy {gpu_s:.3f} s of {wall:.3f} ({gpu_s / wall:.0%}); {launches} kernels, "
+        f"{gpu_s / max(launches, 1) * 1e6:.1f} us each on average"
+    )
     for name in ("cudaStreamSynchronize", "cudaDeviceSynchronize", "cudaMemcpyAsync", "aten::item",
                  "aten::_local_scalar_dense", "cudaLaunchKernel"):  # fmt: skip
         e = next((e for e in events if e.key == name), None)

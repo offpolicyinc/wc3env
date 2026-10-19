@@ -57,5 +57,3 @@ def ability_orders() -> frozenset[int]:
         for level in a["levels"].values():
             out.update(o["order_id"] for o in level.get("orders", []) if o.get("order_id") is not None)
     return frozenset(out)
-
-

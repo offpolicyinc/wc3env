@@ -333,7 +333,9 @@ def check(path: str, stream=None, origin: str = "player") -> dict:
                         k = TYPES.index(kind)
                         if allowed[k]:
                             masked[f"share: {kind} steps"] += 1
-                            masked[f"share: {kind} arguments allowed"] += int(chosen_masks(f_before, k, 0)["argument"].sum())
+                            masked[f"share: {kind} arguments allowed"] += int(
+                                chosen_masks(f_before, k, 0)["argument"].sum()
+                            )
                 per_step[min(kept, 3)] += 1
     except Exception:
         return {"id": Path(path).stem, "origin": origin, "error": traceback.format_exc()[-1200:]}

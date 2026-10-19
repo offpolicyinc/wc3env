@@ -76,7 +76,9 @@ class Inference:
             pending = self._read(links, connections, timeout=1.0)
             arrived = [time.perf_counter()] * len(pending)
             deadline = time.perf_counter() + self.args.gather
-            while pending and sum(len(r[2]["keys"]) for r in pending) < self.args.batch and time.perf_counter() < deadline:
+            while (
+                pending and sum(len(r[2]["keys"]) for r in pending) < self.args.batch and time.perf_counter() < deadline
+            ):
                 more = self._read(links, connections, timeout=max(0.0, deadline - time.perf_counter()))
                 pending += more
                 arrived += [time.perf_counter()] * len(more)
@@ -176,13 +178,15 @@ class Inference:
         self.logged = time.time()
         elapsed = max(time.time() - started, 1e-6)
         rate, per = self.decisions / elapsed, self.decisions / max(self.batches, 1)
-        line = (f"inference: {self.decisions} decisions, {rate:.0f}/s, {per:.0f} per batch, busy "
-                f"{self.busy / elapsed:.0%}, version {self.version}; ms: batch p10/50/90 {_pct(self.work)}, gather "
-                f"{_mean(self.gathered)}, queued {_mean(self.queued)}, "
-                f"{len(self.pulls)} weight pulls {_mean(self.pulls)} (loads {_mean(self.loads)}); a batch's part: "
-                f"latest {len(self.passes['latest'])} x {_mean(self.passes['latest'])}, snapshots "
-                f"{len(self.passes['snapshot'])} x {_mean(self.passes['snapshot'])} ({len(self.snapshots)} held); "
-                f"model: {self.models['latest'].stats()}")
+        line = (
+            f"inference: {self.decisions} decisions, {rate:.0f}/s, {per:.0f} per batch, busy "
+            f"{self.busy / elapsed:.0%}, version {self.version}; ms: batch p10/50/90 {_pct(self.work)}, gather "
+            f"{_mean(self.gathered)}, queued {_mean(self.queued)}, "
+            f"{len(self.pulls)} weight pulls {_mean(self.pulls)} (loads {_mean(self.loads)}); a batch's part: "
+            f"latest {len(self.passes['latest'])} x {_mean(self.passes['latest'])}, snapshots "
+            f"{len(self.passes['snapshot'])} x {_mean(self.passes['snapshot'])} ({len(self.snapshots)} held); "
+            f"model: {self.models['latest'].stats()}"
+        )
         self.work, self.gathered, self.queued, self.pulls, self.loads = [], [], [], [], []
         self.passes = {"latest": [], "snapshot": []}
         print(line, flush=True)
@@ -220,7 +224,9 @@ def merge(inputs: list[dict]) -> dict:
         "static": sum((x["static"] for x in inputs), []),
         "statics": {k: v for x in inputs for k, v in x["statics"].items()},
         "tables": sum((x["tables"] for x in inputs), []),
-        "trees": {start + i: grid for x, start in zip(inputs, np.cumsum([0, *sizes[:-1]])) for i, grid in x["trees"].items()},
+        "trees": {
+            start + i: grid for x, start in zip(inputs, np.cumsum([0, *sizes[:-1]])) for i, grid in x["trees"].items()
+        },
         "opponents": None,
         "plans": None,
     }
@@ -231,8 +237,12 @@ def merge(inputs: list[dict]) -> dict:
     if any(x["plans"] is not None for x in inputs):
         blank = empty_plan()
         out["plans"] = {
-            k: np.concatenate([x["plans"][k] if x["plans"] is not None else np.repeat(np.asarray(blank[k])[None], n, 0)
-                               for x, n in zip(inputs, sizes)])  # fmt: skip
+            k: np.concatenate(
+                [
+                    x["plans"][k] if x["plans"] is not None else np.repeat(np.asarray(blank[k])[None], n, 0)
+                    for x, n in zip(inputs, sizes)
+                ]
+            )  # fmt: skip
             for k in blank
         }
     return out
@@ -258,8 +268,12 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--log-every", type=float, default=20, help="seconds between log lines")
     p.add_argument("--snapshot-cache", type=int, default=8, help="snapshot policies' models kept at most")
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True,
-                   help="torch.compile the latest policy's step (policy/agent.py's Model)")
+    p.add_argument(
+        "--compile",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="torch.compile the latest policy's step (policy/agent.py's Model)",
+    )
     return p
 
 

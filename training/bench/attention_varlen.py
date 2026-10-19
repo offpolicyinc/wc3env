@@ -122,7 +122,9 @@ def bench() -> str:
         try:
             ms, out = timed(fn, qp, kp, vp)
             attention[name] = fn
-            say(f"attention  {name:13s} {ms:6.2f} ms   max diff {float((out.float() - reference.float()).abs().max()):.1e}")
+            say(
+                f"attention  {name:13s} {ms:6.2f} ms   max diff {float((out.float() - reference.float()).abs().max()):.1e}"
+            )
         except Exception as error:  # noqa: BLE001
             say(f"attention  {name:13s} failed: {type(error).__name__}: {str(error)[:200]}")
 
@@ -165,7 +167,9 @@ def bench() -> str:
     for name, fn in attention.items():
         try:
             ms, out = timed(packed_block(fn), xp, repeat=5)
-            say(f"block      {name:13s} {ms:6.2f} ms (eager)   max diff {float((out.float() - ref_out).abs().max()):.1e}")
+            say(
+                f"block      {name:13s} {ms:6.2f} ms (eager)   max diff {float((out.float() - ref_out).abs().max()):.1e}"
+            )
         except Exception as error:  # noqa: BLE001
             say(f"block      {name:13s} failed: {type(error).__name__}: {str(error)[:200]}")
     if "packed/flash2" in attention:
@@ -173,7 +177,9 @@ def bench() -> str:
         try:  # the whole packed block compiled, flash-attn's op inside it
             whole = autocast(torch.compile(packed_math(flash), dynamic=False))
             ms, out = timed(whole, xp, repeat=5)
-            say(f"block      packed/flash2 {ms:6.2f} ms (compiled whole)   max diff {float((out.float() - ref_out).abs().max()):.1e}")
+            say(
+                f"block      packed/flash2 {ms:6.2f} ms (compiled whole)   max diff {float((out.float() - ref_out).abs().max()):.1e}"
+            )
         except Exception as error:  # noqa: BLE001
             say(f"block      packed/flash2 compiled whole failed: {type(error).__name__}: {str(error)[:200]}")
 
@@ -190,7 +196,9 @@ def bench() -> str:
 
         try:  # compiled around an eager flash call
             ms, out = timed(autocast(lambda xp: after(xp, flash(*before(xp)))), xp, repeat=5)
-            say(f"block      packed/flash2 {ms:6.2f} ms (compiled around)   max diff {float((out.float() - ref_out).abs().max()):.1e}")
+            say(
+                f"block      packed/flash2 {ms:6.2f} ms (compiled around)   max diff {float((out.float() - ref_out).abs().max()):.1e}"
+            )
         except Exception as error:  # noqa: BLE001
             say(f"block      packed/flash2 compiled around failed: {type(error).__name__}: {str(error)[:200]}")
     return "\n".join(lines)

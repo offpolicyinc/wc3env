@@ -92,7 +92,10 @@ def host(name: str, bridges: int, games: int, seconds: float, pause: float) -> d
     with contextlib.ExitStack() as stack:
         tunnels = [stack.enter_context(modal.forward(PORT + k, unencrypted=True)) for k in range(bridges)]
         registry = modal.Dict.from_name(selfplay.REGISTRY, create_if_missing=True)
-        registry[name] = {"games": ["%s:%d" % t.tcp_socket for t in tunnels], "container_at": selfplay._placement(os.environ)}
+        registry[name] = {
+            "games": ["%s:%d" % t.tcp_socket for t in tunnels],
+            "container_at": selfplay._placement(os.environ),
+        }
         results: list = [None] * bridges
 
         def run(k):
@@ -110,15 +113,21 @@ def host(name: str, bridges: int, games: int, seconds: float, pause: float) -> d
     return {
         "at": selfplay._placement(os.environ),
         "steps_per_s": sum(r["steps"] for r in results) / results[0]["seconds"],
-        "ms": {part: (float(np.median(v)), float(np.percentile(v, 90)), float(np.mean(v))) for part, v in parts.items()},
+        "ms": {
+            part: (float(np.median(v)), float(np.percentile(v, 90)), float(np.mean(v))) for part, v in parts.items()
+        },
     }
 
 
 def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--seconds", type=float, default=300, help="stepping, the first 60 not counted")
-    p.add_argument("--pause", type=float, default=70, help="ms each reply is held before the next step: self-play's "
-                   "actor and inference time (sp15: ~70)")
+    p.add_argument(
+        "--pause",
+        type=float,
+        default=70,
+        help="ms each reply is held before the next step: self-play's actor and inference time (sp15: ~70)",
+    )
     p.add_argument("--games", type=int, default=32, help="per bridge (self-play: one bridge per actor, 32 games)")
     p.add_argument("--bridges", type=int, default=2, help="per sandbox (self-play: --per-box 2)")
     p.add_argument("--region", default="us-east", help="the host container's (self-play pins its GPU container)")

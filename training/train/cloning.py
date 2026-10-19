@@ -74,8 +74,9 @@ class Lanes:
     process only says which buffer it finished, so nothing is pickled or copied between processes (shipping
     each process's arrays made the main process the bottleneck, slower the more processes there were)."""
 
-    def __init__(self, files: list[Path], lanes: int, length: int, workers: int, seed: int, keep: tuple,
-                 slots: int = 3):
+    def __init__(
+        self, files: list[Path], lanes: int, length: int, workers: int, seed: int, keep: tuple, slots: int = 3
+    ):
         import torch.multiprocessing as mp
 
         ctx = mp.get_context("spawn")
@@ -83,7 +84,10 @@ class Lanes:
         sample = ReplayData(files[0]).chunk(0, length)
         sample["reset"] = np.bool_(False)
         self.buffers = [
-            {k: torch.from_numpy(np.zeros((lanes, *np.shape(v)), np.asarray(v).dtype)).share_memory_() for k, v in sample.items()}
+            {
+                k: torch.from_numpy(np.zeros((lanes, *np.shape(v)), np.asarray(v).dtype)).share_memory_()
+                for k, v in sample.items()
+            }
             for _ in range(slots)
         ]
         self.frees = [ctx.Queue() for _ in range(workers)]
@@ -96,8 +100,18 @@ class Lanes:
         for w in range(workers):
             p = ctx.Process(
                 target=_lanes,
-                args=(w, [str(f) for f in files], (int(bounds[w]), int(bounds[w + 1])), length, seed, keep,
-                      self.buffers, self.frees[w], self.done, self.stop),
+                args=(
+                    w,
+                    [str(f) for f in files],
+                    (int(bounds[w]), int(bounds[w + 1])),
+                    length,
+                    seed,
+                    keep,
+                    self.buffers,
+                    self.frees[w],
+                    self.done,
+                    self.stop,
+                ),
                 daemon=True,
             )
             p.start()
@@ -229,7 +243,9 @@ def train(args) -> None:
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
     log = (out / "log.txt").open("a", buffering=1)
-    track = Track(out.name, {k: v for k, v in vars(args).items() if isinstance(v, (int, float, str, bool, type(None)))}, "cloning")
+    track = Track(
+        out.name, {k: v for k, v in vars(args).items() if isinstance(v, (int, float, str, bool, type(None)))}, "cloning"
+    )
 
     def say(line: str):
         stamp = time.strftime("%H:%M:%S")
@@ -257,7 +273,9 @@ def train(args) -> None:
     varlen = args.pack and device.type == "cuda" and flash_attn_varlen_func is not None
     if args.compile and device.type == "cuda":
         model.compile_blocks(None if varlen else False)  # packed: the token count changes with every piece
-    say(f"packed attention {'on' if varlen else 'off'}, compiled blocks {'on' if args.compile and device.type == 'cuda' else 'off'}")
+    say(
+        f"packed attention {'on' if varlen else 'off'}, compiled blocks {'on' if args.compile and device.type == 'cuda' else 'off'}"
+    )
     lanes = Lanes(train_files, args.batch, args.length, args.workers, args.seed, (args.keep_order, args.keep_made))
     next_batch = lanes.on(device)
     batch = next_batch()
@@ -269,7 +287,9 @@ def train(args) -> None:
     step = 0
     checkpoint = out / "last.pt"
     if args.init and not checkpoint.exists():  # start from another run's weights (a fine-tune), fresh optimizer
-        missing, unexpected = model.load_state_dict(upgrade(torch.load(args.init, map_location=device)["model"]), strict=False)
+        missing, unexpected = model.load_state_dict(
+            upgrade(torch.load(args.init, map_location=device)["model"]), strict=False
+        )
         if unexpected or any(not k.startswith(FRESH) for k in missing):
             raise ValueError(f"{args.init} does not match the model: missing {missing}, unexpected {unexpected}")
         say(f"weights from {args.init}")
@@ -305,9 +325,13 @@ def train(args) -> None:
                 size = row_size(int(count.max()))
                 packing = pack(count, size, device) if varlen else None
                 # the share of the padded tokens that are real (packed: the only ones computed)
-                parts["tokens_kept"] = parts.get("tokens_kept", 0.0) + (np.minimum(count, size) + PATCHES + 1).sum() / ((size + PATCHES + 1) * units.size)
+                parts["tokens_kept"] = parts.get("tokens_kept", 0.0) + (np.minimum(count, size) + PATCHES + 1).sum() / (
+                    (size + PATCHES + 1) * units.size
+                )
                 with torch.autocast(device.type, torch.bfloat16, enabled=device.type == "cuda"):
-                    out_ = model(piece, None if state is None else [h[lo : lo + micro] for h in state], rows=size, pack=packing)
+                    out_ = model(
+                        piece, None if state is None else [h[lo : lo + micro] for h in state], rows=size, pack=packing
+                    )
                     loss, piece_parts, _ = model.cloning_loss(piece, out_, args.value_weight, counts)
                 loss.backward()
                 states.append([h.detach() for h in out_["state"]])
@@ -335,8 +359,14 @@ def train(args) -> None:
                     acc = evaluate(model, held, args.length, device)
                     say(f"held-out at step {step}: " + " ".join(f"{k} {v:.3f}" for k, v in acc.items()))
                     empty = evaluate(model, held, args.length, device, with_plan=False)  # how much the plan is used
-                    say(f"held-out at step {step}, empty plan: " + " ".join(f"{k} {empty[k]:.3f}" for k in ("type", "argument", "loss")))
-                torch.save({"model": model.state_dict(), "optimizer": opt.state_dict(), "step": step, "critic": CRITIC}, checkpoint)
+                    say(
+                        f"held-out at step {step}, empty plan: "
+                        + " ".join(f"{k} {empty[k]:.3f}" for k in ("type", "argument", "loss"))
+                    )
+                torch.save(
+                    {"model": model.state_dict(), "optimizer": opt.state_dict(), "step": step, "critic": CRITIC},
+                    checkpoint,
+                )
                 if args.snapshot_every and step % args.snapshot_every == 0:  # kept, to pick the best by games later
                     torch.save({"model": model.state_dict(), "step": step, "critic": CRITIC}, out / f"step{step}.pt")
                 if args.on_save:
@@ -355,7 +385,9 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--out", required=True, help="the run's folder: log.txt and last.pt")
     p.add_argument("--steps", type=int, default=10000, help="optimizer steps (one pass is ~2,400 at 32 x 64)")
     p.add_argument("--batch", type=int, default=32, help="lanes")
-    p.add_argument("--micro", type=int, default=0, help="lanes through the GPU at once, gradients added up (an L4: 4 or 8)")
+    p.add_argument(
+        "--micro", type=int, default=0, help="lanes through the GPU at once, gradients added up (an L4: 4 or 8)"
+    )
     p.add_argument("--length", type=int, default=64, help="steps per chunk")
     p.add_argument("--lr", type=float, default=3e-4)
     p.add_argument("--warmup", type=int, default=300)
@@ -370,11 +402,23 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--eval-games", type=int, default=32, help="held-out files for accuracy")
     p.add_argument("--eval-every", type=int, default=1000)
     p.add_argument("--eval-minutes", type=float, default=15)
-    p.add_argument("--snapshot-every", type=int, default=0, help="also keep the weights as step<N>.pt every so many steps (0: only last.pt)")
+    p.add_argument(
+        "--snapshot-every",
+        type=int,
+        default=0,
+        help="also keep the weights as step<N>.pt every so many steps (0: only last.pt)",
+    )
     p.add_argument("--log-every", type=int, default=50)
     p.add_argument("--seed", type=int, default=0)
-    p.add_argument("--pack", action=argparse.BooleanOptionalAction, default=True, help="packed attention (needs flash-attn)")
-    p.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True, help="the transformer blocks and SSM layers compiled")
+    p.add_argument(
+        "--pack", action=argparse.BooleanOptionalAction, default=True, help="packed attention (needs flash-attn)"
+    )
+    p.add_argument(
+        "--compile",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="the transformer blocks and SSM layers compiled",
+    )
     return p
 
 

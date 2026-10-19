@@ -1,6 +1,6 @@
 """An inference process's start with the step compiled (training/bench/compile_cost.py runs it in fresh processes).
 
-    python -c "from training.bench.compile_start import start; start()"
+python -c "from training.bench.compile_start import start; start()"
 """
 
 from __future__ import annotations

@@ -59,7 +59,20 @@ HANDICAPS = (0.35, 0.5, 0.6, 0.7, 0.85, 0.9, 0.95, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5,
 # the order types a fight allows (the rest masked before each decision): no economy, no shop, no altar. Sell, drop,
 # revive and the like were legal on most steps (revive on 85% with no altar on the map). Learn: a hero levelling up
 # mid-fight gets a skill point (skills up to its staged level are learned at staging)
-FIGHT_TYPES = ("noop", "move", "attack_move", "smart", "attack", "stop", "hold", "cast", "cast_point", "cast_unit", "use_item", "learn")
+FIGHT_TYPES = (
+    "noop",
+    "move",
+    "attack_move",
+    "smart",
+    "attack",
+    "stop",
+    "hold",
+    "cast",
+    "cast_point",
+    "cast_unit",
+    "use_item",
+    "learn",
+)
 FIGHT_MASK = np.array([t in FIGHT_TYPES for t in TYPES])
 MAP = "Maps/FrozenThrone/(2)FlatArena.w3x"  # under the game's folder (training/cloud/selfplay.py puts it there)
 DECIDED = 0.3  # a side whose army value falls below this share of the other's (for HOLD_SECONDS) has lost
@@ -135,7 +148,10 @@ def army(rng: np.random.Generator) -> list[tuple[str, dict]]:
     out = []
     for hero in rng.permutation(HEROES)[:3]:
         level = int(rng.integers(LEVELS[0], LEVELS[1] + 1))
-        items = [str(rng.choice(HEAL)), *(str(i) for i in rng.choice(POOL, int(rng.integers(*ITEMS, endpoint=True)) - 1, replace=False))]
+        items = [
+            str(rng.choice(HEAL)),
+            *(str(i) for i in rng.choice(POOL, int(rng.integers(*ITEMS, endpoint=True)) - 1, replace=False)),
+        ]
         out.append((str(hero), {"level": level, "learn": list(skills(rng, str(hero), level)), "items": items}))
     budget, types = int(rng.integers(FOOD[0], FOOD[1] + 1)), [t for t in ROWS if t not in HEROES]
     while fits := [t for t in types if _food(t) <= budget]:
@@ -162,7 +178,9 @@ def reinforcements(rng: np.random.Generator, units: list[tuple[str, dict]], shar
     return out
 
 
-def placements(rng: np.random.Generator, units: list[tuple[str, dict]], extra_units: list = (), extra_player: int = 1) -> list:
+def placements(
+    rng: np.random.Generator, units: list[tuple[str, dict]], extra_units: list = (), extra_player: int = 1
+) -> list:
     """[(type, extra, player, x, y)] for both armies, player 1's player 0's mirror image about a random centre; then
     `extra_player`'s `extra_units` (reinforcements), each in its type's row, past the ends of the mirrored one."""
     (min_x, min_y, max_x, max_y), starts = arena()
@@ -244,7 +262,9 @@ def _cast_worth(type_id: int, illusion: bool, mana: dict) -> float:
     makes at the level cast (0 when the spell's cost was never seen)."""
     makers = _illusions() if illusion else _summoned().get(int(type_id), [])
     known = [(mana[a][0], n, mana[a][1] == at) for a, at, n in makers if a in mana]
-    costs = [m / n for m, n, same in known if same] or [m / n for m, n, _ in known]  # else at another level (cast before a level-up)
+    costs = [m / n for m, n, same in known if same] or [
+        m / n for m, n, _ in known
+    ]  # else at another level (cast before a level-up)
     return max(costs) * GOLD_PER_MANA if costs else 0.0
 
 
@@ -383,9 +403,19 @@ class Fight(Episode):
         rewards = {}
         for slot in self.learning:
             r = np.zeros(len(CHANNELS), np.float32)
-            r[CHANNELS.index("win")] = TIME_LIMIT if too_long else 0.0 if winner is None else 1.0 if winner == slot else -1.0
+            r[CHANNELS.index("win")] = (
+                TIME_LIMIT if too_long else 0.0 if winner is None else 1.0 if winner == slot else -1.0
+            )
             r[CHANNELS.index("dealt")], r[CHANNELS.index("taken")] = lost[1 - slot], -lost[slot]
             rewards[slot] = r
-        outcome = "time limit" if too_long else "draw" if winner is None else "victory" if winner == self.game.slot else "defeat"
+        outcome = (
+            "time limit"
+            if too_long
+            else "draw"
+            if winner is None
+            else "victory"
+            if winner == self.game.slot
+            else "defeat"
+        )
         return Step(rewards, done or too_long or winner is not None, outcome, (now - self.began) / 60,
                     reload=not done and now > RESET_MINUTES * 60)  # fmt: skip

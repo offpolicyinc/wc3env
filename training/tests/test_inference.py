@@ -103,7 +103,9 @@ class DecisionTest(unittest.TestCase):
         moved = {k: v + 0.05 * v.std() * torch.randn(v.shape, generator=g) if v.is_floating_point() and v.numel() > 1 else v
                  for k, v in learner.model.state_dict().items()}  # fmt: skip
         asked = inference.client.call
-        inference.client.call = lambda what, *a: {k: v.clone() for k, v in moved.items()} if what == "snapshot" else asked(what, *a)
+        inference.client.call = lambda what, *a: (
+            {k: v.clone() for k, v in moved.items()} if what == "snapshot" else asked(what, *a)
+        )
         swaps, snapshot_of = [], inference._snapshot
         inference._snapshot = lambda policy: swaps.append(policy) or snapshot_of(policy)
         threading.Thread(target=inference.run, daemon=True).start()
@@ -179,7 +181,9 @@ class DecisionTest(unittest.TestCase):
             def send(self, x):
                 for k in UNIT_KEYS:
                     v = x["features"][k]
-                    x["features"][k] = np.concatenate([v, np.zeros((v.shape[0], 128 - v.shape[1], *v.shape[2:]), v.dtype)], 1)
+                    x["features"][k] = np.concatenate(
+                        [v, np.zeros((v.shape[0], 128 - v.shape[1], *v.shape[2:]), v.dtype)], 1
+                    )
                 self.out = self.model.run(x)
 
             def receive(self):

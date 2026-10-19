@@ -29,7 +29,9 @@ def check_files(folder: str = "dataset") -> str:
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         main()
-    Path(f"/dataset/verify-{folder}.txt").write_text(out.getvalue())  # kept in the Volume if the caller loses its connection
+    Path(f"/dataset/verify-{folder}.txt").write_text(
+        out.getvalue()
+    )  # kept in the Volume if the caller loses its connection
     return out.getvalue()
 
 

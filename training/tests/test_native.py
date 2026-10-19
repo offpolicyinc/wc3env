@@ -51,7 +51,10 @@ class HookTest(unittest.TestCase):
                     want = library[slot].step(obs, last[slot])
                     for k, v in want.items():
                         np.testing.assert_array_equal(obs.features[k], v, err_msg=f"step {t} slot {slot} {k}")
-                last = {s: random_action(o, statics[s], rng) if rng.random() < 0.75 else None for s, o in observations.items()}
+                last = {
+                    s: random_action(o, statics[s], rng) if rng.random() < 0.75 else None
+                    for s, o in observations.items()
+                }
                 taken = {s: hook_decision(a) for s, a in last.items() if a is not None}
                 observations, done, _ = session.step({0: [], 1: []}, decisions=taken)
                 if done:

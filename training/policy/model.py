@@ -163,15 +163,25 @@ def upgrade(state: dict, critic: tuple | None = None) -> dict:
     if w is not None and w.shape[1] == (MAP_CHANNELS - 1) * PATCH * PATCH:
         state = dict(state)
         state["patch_in.weight"] = torch.cat([w, w.new_zeros(w.shape[0], PATCH * PATCH)], 1)
-    if "plan_mix.weight" in state:  # the plan input before AlphaStar's (summed into one vector): it starts as the empty plan
+    if (
+        "plan_mix.weight" in state
+    ):  # the plan input before AlphaStar's (summed into one vector): it starts as the empty plan
         state = {k: v for k, v in state.items() if k != "plan_mix.weight"}
-        state["plan_out.3.weight"], state["plan_out.3.bias"] = state["plan_out.3.weight"] * 0, state["plan_out.3.bias"] * 0
+        state["plan_out.3.weight"], state["plan_out.3.bias"] = (
+            state["plan_out.3.weight"] * 0,
+            state["plan_out.3.bias"] * 0,
+        )
     # the critic's checkpoint is kept only if it has today's channels (CRITIC, saved as "critic"); otherwise it starts
     # fresh with its statistics: the one-layer critic before value_net (2026-10-11), or other channels
-    stale = "critic.3.weight" in state or (critic is not None and tuple(critic) != CRITIC) or (
-        "value_net.out" in state and state["value_net.out"].shape[0] != len(CRITIC))
+    stale = (
+        "critic.3.weight" in state
+        or (critic is not None and tuple(critic) != CRITIC)
+        or ("value_net.out" in state and state["value_net.out"].shape[0] != len(CRITIC))
+    )
     if stale:
-        state = {k: v for k, v in state.items() if not k.startswith(("critic.", "value_net.", "value_mean", "value_std"))}
+        state = {
+            k: v for k, v in state.items() if not k.startswith(("critic.", "value_net.", "value_mean", "value_std"))
+        }
     # the auxiliary heads (opponent scalars, the core 1 and 4 s ahead), dropped 2026-10-12: sp40's froze the core
     # (its cosine to 4 s later 0.82 -> 0.97 in 150 updates, training/bench/rl_drift.py)
     return {k: v for k, v in state.items() if not k.startswith(("opponent_head.", "future_heads."))}
@@ -329,7 +339,9 @@ class Policy(nn.Module):
         self.plan_hero_pos = nn.Parameter(torch.zeros(PLAN_HEROES, d))  # and in what place
         self.plan_order_pos = nn.Parameter(torch.zeros(PLAN_ORDER, d))
         self.plan_start = nn.Parameter(torch.zeros(d))  # the build order's own token, always there to attend to
-        self.plan_order = Block(d, heads)  # the build order through its own attention layer (AlphaStar's small transformer)
+        self.plan_order = Block(
+            d, heads
+        )  # the build order through its own attention layer (AlphaStar's small transformer)
         self.plan_units = nn.Sequential(nn.Linear(n_args, PRESENCE), nn.ReLU())  # unit, building, hero types made
         self.plan_upgrades = nn.Sequential(nn.Linear(n_args, PRESENCE), nn.ReLU())  # research levels
         self.plan_made = nn.Linear(2 * PRESENCE, d)  # the two presence vectors into the plan's vector
@@ -372,9 +384,18 @@ class Policy(nn.Module):
         for name, rule in head_rules().items():
             self.register_buffer(f"rule_{name}", torch.as_tensor(rule), persistent=False)
         # every head starts out uniform (and the value at 0.5): no large first gradients from confident guesses
-        for layer in (self.type_head, self.argument_head[-1], self.aim_head, self.queued_head, self.group_head,
-                      self.cell_head, self.value_head[-1], self.actor_query, self.target_query,
-                      self.region_query):
+        for layer in (
+            self.type_head,
+            self.argument_head[-1],
+            self.aim_head,
+            self.queued_head,
+            self.group_head,
+            self.cell_head,
+            self.value_head[-1],
+            self.actor_query,
+            self.target_query,
+            self.region_query,
+        ):
             nn.init.zeros_(layer.weight)
             if layer.bias is not None:
                 nn.init.zeros_(layer.bias)
@@ -400,7 +421,11 @@ class Policy(nn.Module):
             return v if v.shape[1] == rows else F.pad(v, (0, 0) * (v.dim() - 2) + (0, rows - v.shape[1]))
 
         units = self.unit_in(cut(s["units"]).float())
-        units = units + embed(self.type_emb, cut(s["unit_type"]).long()) + embed(self.owner_emb, cut(s["unit_owner"]).long())
+        units = (
+            units
+            + embed(self.type_emb, cut(s["unit_type"]).long())
+            + embed(self.owner_emb, cut(s["unit_owner"]).long())
+        )
         units = units + embed(self.order_emb, cut(s["unit_order"]).long().clamp(max=15))
         units = units + embed(self.type_emb, cut(s["unit_queue"]).long())
         for bag, field in (
@@ -538,7 +563,10 @@ class Policy(nn.Module):
         yield "same_type", group[..., :2]
         yield "size", group[..., 2:]
         yield "target", torch.einsum("...d,...nd->...n", self.target_query(qa), keys) / scale
-        region = yield "region", torch.einsum("...d,...pd->...p", self.region_query(qa), self.patch_key(patches)) / scale
+        region = yield (
+            "region",
+            torch.einsum("...d,...pd->...p", self.region_query(qa), self.patch_key(patches)) / scale,
+        )
         yield "cell", self.cell_head(torch.cat([qa, pick(patches, region)], -1))
 
     def heads(self, out, labels):
@@ -655,7 +683,9 @@ class Policy(nn.Module):
             ce = F.cross_entropy(logits[use].float(), target[use].long(), reduction="sum")
             parts[name] = ce / counts[name].clamp(min=1)
         known = uses["value"]
-        value = F.binary_cross_entropy_with_logits(h["value"][known].float(), batch["result"][known].float(), reduction="sum")
+        value = F.binary_cross_entropy_with_logits(
+            h["value"][known].float(), batch["result"][known].float(), reduction="sum"
+        )
         parts["value"] = value / counts["value"].clamp(min=1)
         loss = sum(v * (value_weight if k == "value" else 1) for k, v in parts.items())
         return loss, {k: float(v.detach()) for k, v in parts.items()}, h
@@ -688,7 +718,11 @@ def load(checkpoint, device="cpu", eval: bool = True) -> Policy:
     """A Policy from a checkpoint ({"model": state dict}, or such a dict itself). Parts a checkpoint predates
     (FRESH) start fresh: the critic at 0, the statistics at mean 0 and spread 1."""
     # our own checkpoints: a self-play one also keeps its league (a plain object, not only tensors)
-    saved = torch.load(checkpoint, map_location=device, weights_only=False) if not isinstance(checkpoint, dict) else checkpoint
+    saved = (
+        torch.load(checkpoint, map_location=device, weights_only=False)
+        if not isinstance(checkpoint, dict)
+        else checkpoint
+    )
     state = saved.get("model", saved)
     model = Policy().to(device)
     missing, unexpected = model.load_state_dict(upgrade(state, saved.get("critic")), strict=False)

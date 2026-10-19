@@ -68,7 +68,9 @@ def teacher_forced(folder: str) -> dict:
     random.Random(0).shuffle(trained)
     out = {}
     for name, files in (("held-out", held), ("trained on", trained[:TRAINED_SAMPLE])):
-        sums = defaultdict(lambda: np.zeros(6))  # bucket -> [orders, label enemy, mass enemy, right, right on enemy-half labels, enemy labels]
+        sums = defaultdict(
+            lambda: np.zeros(6)
+        )  # bucket -> [orders, label enemy, mass enemy, right, right on enemy-half labels, enemy labels]
         played = 0
         for at in range(0, len(files), GROUP):  # GROUP games at once (all of pro2's held-out games ran out of memory)
             games = [ReplayData(f) for f in files[at : at + GROUP]]
@@ -98,7 +100,12 @@ def teacher_forced(folder: str) -> dict:
                     s = sums[bucket((start + t) * STEP_MS / 60000)]
                     enemy = bool(label_enemy[b, t])
                     s += [1, enemy, float(mass[b, t]), bool(right[b, t]), enemy and bool(right[b, t]), enemy]
-        out[name] = {"games": played, "buckets": {k: v.tolist() for k, v in sorted(sums.items(), key=lambda kv: float(kv[0].split("-")[0].rstrip("+")))}}
+        out[name] = {
+            "games": played,
+            "buckets": {
+                k: v.tolist() for k, v in sorted(sums.items(), key=lambda kv: float(kv[0].split("-")[0].rstrip("+")))
+            },
+        }
     return out
 
 
@@ -158,17 +165,24 @@ def makes(folder: str, checkpoint: str) -> dict:
                     g = group_of.get(int(ak[b, t]))
                     if g:
                         sums[g] += row
-            print(f"{folder} {'plan' if with_plan else 'empty'}: {min(at + GROUP, len(held))}/{len(held)} games", flush=True)
+            print(
+                f"{folder} {'plan' if with_plan else 'empty'}: {min(at + GROUP, len(held))}/{len(held)} games",
+                flush=True,
+            )
         out["with plan" if with_plan else "empty plan"] = {k: v.tolist() for k, v in sums.items()}
     return out
 
 
 def table(name: str, result: dict) -> None:
     for part, r in result.items():
-        print(f"{name}, {part} ({r['games']} player-games): minutes | point orders | players' targets in enemy half | "
-              "bc10's probability on enemy half | region top-1 (all / on enemy-half targets)")
+        print(
+            f"{name}, {part} ({r['games']} player-games): minutes | point orders | players' targets in enemy half | "
+            "bc10's probability on enemy half | region top-1 (all / on enemy-half targets)"
+        )
         for b, (n, enemy, mass, right, right_enemy, enemies) in r["buckets"].items():
-            print(f"  {b:6s} {int(n):7d}   {enemy / n:6.1%}   {mass / n:6.1%}   {right / n:6.1%} / {right_enemy / max(enemies, 1):6.1%}")
+            print(
+                f"  {b:6s} {int(n):7d}   {enemy / n:6.1%}   {mass / n:6.1%}   {right / n:6.1%} / {right_enemy / max(enemies, 1):6.1%}"
+            )
 
 
 def play(games: int = 8, minutes: float = 15.0) -> None:

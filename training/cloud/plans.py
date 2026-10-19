@@ -1,6 +1,6 @@
 """The plan bank (training/policy/plan.py PlanBank) from a data set folder in the Volume, in a Modal function.
 
-    python -m training.cloud.plans dataset3 runs/plans.npz     # also kept in the Volume as /dataset/plans.npz
+python -m training.cloud.plans dataset3 runs/plans.npz     # also kept in the Volume as /dataset/plans.npz
 """
 
 import io

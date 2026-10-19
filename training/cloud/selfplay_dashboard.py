@@ -18,7 +18,6 @@ from pathlib import Path
 
 import modal
 import numpy as np
-
 import wandb
 
 PROJECT = "off-policy-inc/wc3"
@@ -87,8 +86,14 @@ SECTIONS = [
         "Self-play games in blocks of 200 as they finish: each point one block's player-0 share won, lost and run to "
         "the time limit (a loss for both); x: games played by the block's last. Runs before cb6 (no self-play games in "
         "games.jsonl): of the last 200 at each update.",
-        [("self_blocks/won", "won"), ("self_blocks/lost", "lost"), ("self_blocks/time limit", "time limit"),
-         ("games/self_pool_won", "won"), ("games/self_pool_lost", "lost"), ("games/self_pool_time", "time limit")],
+        [
+            ("self_blocks/won", "won"),
+            ("self_blocks/lost", "lost"),
+            ("self_blocks/time limit", "time limit"),
+            ("games/self_pool_won", "won"),
+            ("games/self_pool_lost", "lost"),
+            ("games/self_pool_time", "time limit"),
+        ],
     ),
     (
         "Ladder results by start time",
@@ -172,9 +177,21 @@ COMBAT_CHANNELS = ("win", "dealt", "taken", "weighted")  # combat's reward chann
 
 # the spells, items and skills charts (combat): each argument's share of the steps, the most used ones
 CHOSEN = (
-    ("Spells: which it casts", "spell_", "Each spell's share of the learner's steps in the update (cast, cast_point and cast_unit), the 11 most cast."),
-    ("Items: which it uses", "item_", "Each item's share of the learner's steps in the update (use_item), the 11 most used."),
-    ("Skills: which it learns", "learn_", "Each skill's share of the learner's steps in the update (a hero levelling up mid-fight), the 11 most learned."),
+    (
+        "Spells: which it casts",
+        "spell_",
+        "Each spell's share of the learner's steps in the update (cast, cast_point and cast_unit), the 11 most cast.",
+    ),
+    (
+        "Items: which it uses",
+        "item_",
+        "Each item's share of the learner's steps in the update (use_item), the 11 most used.",
+    ),
+    (
+        "Skills: which it learns",
+        "learn_",
+        "Each skill's share of the learner's steps in the update (a hero levelling up mid-fight), the 11 most learned.",
+    ),
 )
 
 
@@ -182,9 +199,17 @@ def chosen_sections(data: dict) -> list:
     """CHOSEN's charts, each with its run's most chosen arguments (empty before cb9)."""
     out = []
     for title, prefix, note in CHOSEN:
-        totals = {k: sum(v for _, v in p) for k, p in data.items() if k.startswith("play/" + prefix) and isinstance(p, list)}
+        totals = {
+            k: sum(v for _, v in p) for k, p in data.items() if k.startswith("play/" + prefix) and isinstance(p, list)
+        }
         top = sorted(totals, key=totals.get, reverse=True)[: len(COLORS)]
-        out.append((title, note, [(k, k[len("play/" + prefix):].replace("_", " ")) for k in top] or [("play/" + prefix, "none")]))
+        out.append(
+            (
+                title,
+                note,
+                [(k, k[len("play/" + prefix) :].replace("_", " ")) for k in top] or [("play/" + prefix, "none")],
+            )
+        )
     return out
 
 
@@ -302,7 +327,9 @@ def blocks(games: list, prefix: str, x) -> dict:
         hit = np.cumsum([0] + [OUTCOMES.get(g["outcome"], g["outcome"]) == k for g in games])
         ends = range(BLOCK, len(games) + 1, BLOCK)
         out[f"{prefix}/{k}"] = [[x(games[i - 1]), (hit[i] - hit[i - BLOCK]) / BLOCK] for i in ends]
-        out[f"{prefix}_avg/{k}"] = [[x(games[i - 1]), (hit[i] - hit[i - AVERAGE]) / AVERAGE] for i in ends if i >= AVERAGE]
+        out[f"{prefix}_avg/{k}"] = [
+            [x(games[i - 1]), (hit[i] - hit[i - AVERAGE]) / AVERAGE] for i in ends if i >= AVERAGE
+        ]
     return out
 
 
@@ -318,7 +345,11 @@ def by_start(name: str) -> dict:
     rows = [json.loads(line) for line in raw.splitlines() if line.strip()]
     rows = [g for g in rows if "eval" not in g]  # evaluation games (--eval-games): neither ladder nor self-play
     games = [g for g in rows if g.get("began") is not None]  # the ladder's (self-play games have no start, from cb6)
-    out = blocks(sorted((g for g in rows if g.get("began") is None), key=lambda g: g["ended"]), "self_blocks", lambda g: g["update"])
+    out = blocks(
+        sorted((g for g in rows if g.get("began") is None), key=lambda g: g["ended"]),
+        "self_blocks",
+        lambda g: g["update"],
+    )
     if not games:
         return out
     # nearly the longest of the recent games (the 98th percentile): one outlier (cb1: a first fight of 12 minutes while
@@ -429,7 +460,9 @@ def main() -> None:
                     "data": json.dumps(data),
                     "sections": json.dumps(sections(data[a.name].get("mode", "game"), data[a.name])),
                     "status": status,
-                    "x": "games played (all of them, ladder and self-play)" if data[a.name].get("x") == "games" else "the learner's update",
+                    "x": "games played (all of them, ladder and self-play)"
+                    if data[a.name].get("x") == "games"
+                    else "the learner's update",
                     "compare": " Dotted: " + ", ".join(names[1:]) + "." if names[1:] else "",
                     "colors": json.dumps(COLORS),
                 }

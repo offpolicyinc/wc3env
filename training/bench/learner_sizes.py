@@ -31,7 +31,9 @@ def bench() -> str:
     from training.selfplay.learner import Learner, parser
 
     traces = pickle.load(open("/root/obs.pkl", "rb"))
-    base = play(Agents(load("/root/model.pt", "cuda"), 1.0, 0), list(range(8)), 385, traces, Static.load(MAP, ("orc", "human")))
+    base = play(
+        Agents(load("/root/model.pt", "cuda"), 1.0, 0), list(range(8)), 385, traces, Static.load(MAP, ("orc", "human"))
+    )
     args = parser().parse_args(["--init", "/root/model.pt", "--out", tempfile.mkdtemp()])
     learner = Learner(args)
     learner.update = args.warmup + 1

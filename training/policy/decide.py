@@ -79,7 +79,8 @@ def _device_rules(device) -> dict:
     if device not in _DEVICE_RULES:
         r = head_rules()
         _DEVICE_RULES[device] = {
-            k: torch.as_tensor(r[k], device=device) for k in ("has_argument", "has_actor", "grouped", "queueable", "aim")
+            k: torch.as_tensor(r[k], device=device)
+            for k in ("has_argument", "has_actor", "grouped", "queueable", "aim")
         } | {"any_argument": torch.tensor([t in ANY_ARGUMENT for t in TYPES], device=device)}
     return _DEVICE_RULES[device]
 

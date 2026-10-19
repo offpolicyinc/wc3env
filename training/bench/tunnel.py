@@ -1,6 +1,7 @@
 """Sandbox -> Modal container through a TCP tunnel: round-trip time for one step's messages (actions ~1 KB out,
 observations of 16 games x 2 players x 9 KB = 288 KB back) and throughput. A CPU function serves; a plain
 sandbox (no Wine) is the client."""
+
 import os
 import socket
 import struct
@@ -35,7 +36,9 @@ def server(registry: str) -> str:
         listener.bind(("0.0.0.0", 7700))
         listener.listen(64)
         import threading
+
         served = [0]
+
         def handle(conn):
             conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             while True:
@@ -46,6 +49,7 @@ def server(registry: str) -> str:
                 _exact(conn, size)
                 conn.sendall(struct.pack("!I", len(reply)) + reply)
                 served[0] += 1
+
         listener.settimeout(120)
         threads = []
         try:
@@ -61,7 +65,7 @@ def server(registry: str) -> str:
         return f"served {served[0]}"
 
 
-CLIENT = r'''
+CLIENT = r"""
 import socket, struct, time, sys
 host, port = sys.argv[1].split(":")
 def exact(s, n):
@@ -88,7 +92,7 @@ threads = [threading.Thread(target=run, args=(k,)) for k in range(CONNS)]
 [x.start() for x in threads]; [x.join() for x in threads]
 dt = time.time() - t
 print(f"{CONNS} connections: {sum(got) / dt / 1e6:.1f} MB/s in total, {60 / dt * CONNS:.0f} round trips/s")
-'''
+"""
 
 if __name__ == "__main__":
     registry = "wc3-tunnel-test"

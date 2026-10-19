@@ -115,10 +115,16 @@ def main():
         minutes = total("minutes")
         reached = [r["army_enemy_half_minute"] for r in rows if r["army_enemy_half_minute"] is not None]
         print(f"{folder}: {len(rows)} player-games, {minutes / len(rows):.1f} min each")
-        print(f"  actions/min {total('actions') / minutes:.1f}; point orders {total('points') / total('actions'):.1%} of actions, "
-              f"{total('points_enemy_half') / max(total('points'), 1):.1%} of them into the enemy's half; "
-              f"attack-moves {total('attack_moves') / minutes:.2f}/min")
-        print(f"  orders aimed at an enemy unit {total('aimed_enemy') / minutes:.2f}/min, "
-              f"{total('aimed_fog') / max(total('aimed_enemy'), 1):.1%} of them at one in the fog")
-        print(f"  own unit ever in the enemy's half: {len(reached)}/{len(rows)}; first at minute "
-              f"median {np.median(reached) if reached else float('nan'):.1f}")
+        print(
+            f"  actions/min {total('actions') / minutes:.1f}; point orders {total('points') / total('actions'):.1%} of actions, "
+            f"{total('points_enemy_half') / max(total('points'), 1):.1%} of them into the enemy's half; "
+            f"attack-moves {total('attack_moves') / minutes:.2f}/min"
+        )
+        print(
+            f"  orders aimed at an enemy unit {total('aimed_enemy') / minutes:.2f}/min, "
+            f"{total('aimed_fog') / max(total('aimed_enemy'), 1):.1%} of them at one in the fog"
+        )
+        print(
+            f"  own unit ever in the enemy's half: {len(reached)}/{len(rows)}; first at minute "
+            f"median {np.median(reached) if reached else float('nan'):.1f}"
+        )

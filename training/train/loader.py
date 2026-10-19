@@ -125,7 +125,10 @@ class ReplayData:
         t = max(end - start, 0)
         counts = self.d["unit_count"][start : start + t].astype(np.int64)
         a, b = (int(self.offsets[start]), int(self.offsets[end])) if t else (0, 0)
-        out = {"step": np.repeat(np.arange(t), counts), "row": np.arange(b - a) - np.repeat(self.offsets[start : start + t] - a, counts)}
+        out = {
+            "step": np.repeat(np.arange(t), counts),
+            "row": np.arange(b - a) - np.repeat(self.offsets[start : start + t] - a, counts),
+        }
         out["units"] = self.d["units"][a:b]
         for k in ID_FIELDS:
             out[k] = self.d[k][a:b]

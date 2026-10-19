@@ -36,18 +36,17 @@ import os
 import queue
 import threading
 import time
+from functools import cache
 from pathlib import Path
 
 import numpy as np
 import torch
 
 from ..policy import model as policy_model
-from functools import cache
-
 from ..policy.actions import TYPES, reference
-from ..policy.masks import ORDER_IDS, argument_ids
 from ..policy.agent import CHUNK
 from ..policy.features import MAX_UNITS
+from ..policy.masks import ORDER_IDS, argument_ids
 from ..policy.model import ROW_SIZES, float32, load, masked_mean, pack, row_size
 from ..replays.dataset import ID_FIELDS
 from ..train.loader import ReplayData
@@ -157,7 +156,13 @@ def argument_names() -> list[str]:
     names = ["none"] * (len(ids) + 1)
     for value, i in ids.items():
         code = "" if value in ORDER_IDS else value.to_bytes(4, "big").decode("latin-1")
-        name = orders.get(value) or ref["items"].get(code, {}).get("name") or ref["abilities"].get(code, {}).get("levels", {}).get("1", {}).get("name") or code or str(value)
+        name = (
+            orders.get(value)
+            or ref["items"].get(code, {}).get("name")
+            or ref["abilities"].get(code, {}).get("levels", {}).get("1", {}).get("name")
+            or code
+            or str(value)
+        )
         names[i] = "".join(c if c.isalnum() else "_" for c in name.lower()).strip("_")
     return names
 
@@ -232,7 +237,11 @@ class Learner:
         # every ladder game's start, end and result, a JSON line each: results by when games began
         # (training/cloud/selfplay_dashboard.py), which the running totals, counted as games finish, cannot give
         self.games_log = (self.out / "games.jsonl").open("a", buffering=1)
-        self.track = Track(self.out.name, {k: v for k, v in vars(args).items() if isinstance(v, (int, float, str, bool, type(None)))}, "selfplay")
+        self.track = Track(
+            self.out.name,
+            {k: v for k, v in vars(args).items() if isinstance(v, (int, float, str, bool, type(None)))},
+            "selfplay",
+        )
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.gammas = gammas(args)  # [CHANNELS]: each reward channel's discount
         self.gamma = torch.from_numpy(self.gammas).to(self.device)
@@ -270,9 +279,14 @@ class Learner:
             raise SystemExit(f"--start-rung {args.start_rung}: not on this mode's ladder {ladder}")
         if args.start_stage and args.start_stage not in self.mode.handicaps:
             raise SystemExit(f"--start-stage {args.start_stage}: not one of this mode's {self.mode.handicaps}")
-        self.league = League(ladder=ladder, handicaps=self.mode.handicaps, minutes=args.minutes, hold=args.hold_stage,
-                             level=ladder.index(args.start_rung) if args.start_rung else 0,
-                             stage=self.mode.handicaps.index(args.start_stage) if args.start_stage else 0)
+        self.league = League(
+            ladder=ladder,
+            handicaps=self.mode.handicaps,
+            minutes=args.minutes,
+            hold=args.hold_stage,
+            level=ladder.index(args.start_rung) if args.start_rung else 0,
+            stage=self.mode.handicaps.index(args.start_stage) if args.start_stage else 0,
+        )
         self.tries = np.zeros(len(TYPES), np.int64)  # each order type, how often chosen in all the steps trained on
         self.tried_at = None  # the (rung, stage) self.tries counts in: a promotion starts the count again
         self.floor = None  # [len(TYPES)] each type's least chance this update: --explore-floor, --explore-min, or 0
@@ -335,19 +349,54 @@ class Learner:
                     if opponent.startswith("eval:"):  # an evaluation game: its policy's record, nothing else
                         policy = opponent[5:]
                         self.eval_results.setdefault(policy, collections.deque(maxlen=EVAL_WINDOW)).append(outcome)
-                        self.games_log.write(json.dumps({"ended": round(time.time(), 1), "eval": policy, "outcome": outcome,
-                                                         "minutes": round(minutes, 2), "update": self.update,
-                                                         "stage": self.eval_handicap}) + "\n")
+                        self.games_log.write(
+                            json.dumps(
+                                {
+                                    "ended": round(time.time(), 1),
+                                    "eval": policy,
+                                    "outcome": outcome,
+                                    "minutes": round(minutes, 2),
+                                    "update": self.update,
+                                    "stage": self.eval_handicap,
+                                }
+                            )
+                            + "\n"
+                        )
                         continue
                     self.games += 1
                     if began is not None:  # a ladder game, with the stage it began under: [rung, handicap]
-                        handicap = None if stage is None else self.league.handicaps[min(stage[1], len(self.league.handicaps) - 1)]
-                        self.games_log.write(json.dumps({"began": round(began, 1), "ended": round(time.time(), 1), "opponent": opponent,
-                                                         "outcome": outcome, "minutes": round(minutes, 2), "update": self.update,
-                                                         "stage": None if stage is None else [stage[0], handicap]}) + "\n")
+                        handicap = (
+                            None
+                            if stage is None
+                            else self.league.handicaps[min(stage[1], len(self.league.handicaps) - 1)]
+                        )
+                        self.games_log.write(
+                            json.dumps(
+                                {
+                                    "began": round(began, 1),
+                                    "ended": round(time.time(), 1),
+                                    "opponent": opponent,
+                                    "outcome": outcome,
+                                    "minutes": round(minutes, 2),
+                                    "update": self.update,
+                                    "stage": None if stage is None else [stage[0], handicap],
+                                }
+                            )
+                            + "\n"
+                        )
                     else:  # a self-play game (from cb6): player 0's outcome, for the dashboard's blocks of games
-                        self.games_log.write(json.dumps({"ended": round(time.time(), 1), "opponent": opponent, "outcome": outcome,
-                                                         "minutes": round(minutes, 2), "update": self.update}) + "\n")
+                        self.games_log.write(
+                            json.dumps(
+                                {
+                                    "ended": round(time.time(), 1),
+                                    "opponent": opponent,
+                                    "outcome": outcome,
+                                    "minutes": round(minutes, 2),
+                                    "update": self.update,
+                                }
+                            )
+                            + "\n"
+                        )
                     self.outcomes[outcome] = self.outcomes.get(outcome, 0) + 1
                     if opponent in self.league.ladder:  # the ladder's alone, for the stop test (build/stop_check.py)
                         self.outcomes["ladder " + outcome] = self.outcomes.get("ladder " + outcome, 0) + 1
@@ -359,7 +408,11 @@ class Learner:
             return (version, None, None) if payload == version else reply
         if kind == "league":  # the league without the weights (actors whose model runs in the inference process)
             with self.lock:
-                return self.version, {**self.league.plan(), "evaluate": self.evaluate, "eval_handicap": self.eval_handicap}
+                return self.version, {
+                    **self.league.plan(),
+                    "evaluate": self.evaluate,
+                    "eval_handicap": self.eval_handicap,
+                }
         if kind == "log":
             self.say(payload)
             return "ok"
@@ -445,7 +498,9 @@ class Learner:
                 b, st = _rows(batch, state, rows)
                 with torch.autocast(self.device.type, torch.bfloat16, enabled=cuda):
                     if not actor_values:
-                        values.append(self.model.value(self.model(b, st, rows=size, pack=packing), b["opponent"]).float())
+                        values.append(
+                            self.model.value(self.model(b, st, rows=size, pack=packing), b["opponent"]).float()
+                        )
                     reference = float32(self.reference(b, st, rows=size, pack=packing))
                 references.append({k: v[0] for k, v in self.reference.log_probs(b, reference)[1].items()})
         value = torch.where(valid[..., None], batch["actor_value"], 0.0) if actor_values else torch.cat(values)
@@ -461,7 +516,9 @@ class Learner:
         else:  # each chunk on its own
             channels, _ = gae(batch["reward"], value, batch["done"], batch["bootstrap"], valid, self.gamma, a.lam)
             _, returns = gae(batch["reward"], value, batch["done"], batch["bootstrap"], valid, self.gamma, a.critic_lam)
-            upgo_channels = upgo(batch["reward"], value, batch["done"], batch["bootstrap"], valid, self.gamma) if a.upgo else None
+            upgo_channels = (
+                upgo(batch["reward"], value, batch["done"], batch["bootstrap"], valid, self.gamma) if a.upgo else None
+            )
         # the shaping's weight: the league's fading one, or the mode's own (combat: always 1, modes/combat.py)
         weight = torch.from_numpy(weights(self.mode.shaping(self.league.shaping()), a.shaping_scale)).to(self.device)
         advantage = (channels * weight).sum(-1)
@@ -489,7 +546,9 @@ class Learner:
             rows, size, packing = parts[0]
             b, st = _rows(batch, state, rows)
             with torch.no_grad(), torch.autocast(self.device.type, torch.bfloat16, enabled=cuda):
-                return self.model.log_probs(b, float32(self.model(b, st, rows=size, pack=packing)))[0], b["step_valid"].bool()
+                return self.model.log_probs(b, float32(self.model(b, st, rows=size, pack=packing)))[0], b[
+                    "step_valid"
+                ].bool()
 
         before = probe() if self.update >= a.warmup else None
         for epoch in range(a.epochs):
@@ -512,8 +571,16 @@ class Learner:
                     if self.update >= a.warmup:  # after the warm-up the policy learns too
                         out32 = float32(out)
                         reference_rows = {name: lp[rows] for name, lp in reference_lp.items()}
-                        loss = loss + self._policy_loss(b, out32, advantage[rows], reference_rows, epoch, stats, steps / share,
-                                                        None if upgo_advantage is None else upgo_advantage[rows])
+                        loss = loss + self._policy_loss(
+                            b,
+                            out32,
+                            advantage[rows],
+                            reference_rows,
+                            epoch,
+                            stats,
+                            steps / share,
+                            None if upgo_advantage is None else upgo_advantage[rows],
+                        )
                     (loss * share).backward()
                     stats["value_loss"] += value_loss.detach() * share / steps
                 stats["grad_norm"] += torch.nn.utils.clip_grad_norm_(self.model.parameters(), a.clip_grad) / steps
@@ -529,11 +596,19 @@ class Learner:
         count = batch["unit_count"].float()
         stats["units_mean"], stats["units_max"] = masked_mean(count, valid), count.masked_fill(~valid, 0).max()
         win = CHANNELS.index("win")
-        stats["value_explained"] = 1 - _var(returns[..., win] - value[..., win], valid) / (_var(returns[..., win], valid) + 1e-8)
-        for k, name in enumerate(CHANNELS):  # each channel's critic fit; "weighted": of the channels as the advantage adds them
-            stats[f"explained_{name}"] = 1 - _var(returns[..., k] - value[..., k], valid) / (_var(returns[..., k], valid) + 1e-8)
+        stats["value_explained"] = 1 - _var(returns[..., win] - value[..., win], valid) / (
+            _var(returns[..., win], valid) + 1e-8
+        )
+        for k, name in enumerate(
+            CHANNELS
+        ):  # each channel's critic fit; "weighted": of the channels as the advantage adds them
+            stats[f"explained_{name}"] = 1 - _var(returns[..., k] - value[..., k], valid) / (
+                _var(returns[..., k], valid) + 1e-8
+            )
         mixed = lambda x: (x * weight).sum(-1)  # noqa: E731
-        stats["explained_weighted"] = 1 - _var(mixed(returns) - mixed(value), valid) / (_var(mixed(returns), valid) + 1e-8)
+        stats["explained_weighted"] = 1 - _var(mixed(returns) - mixed(value), valid) / (
+            _var(mixed(returns), valid) + 1e-8
+        )
         stats["return_std"] = _var(returns[..., win], valid).sqrt()
         stats["shaping"] = torch.tensor(self.league.shaping(), device=self.device)
         for k, name in enumerate(CHANNELS):  # each channel's reward per game-minute (240 steps)
@@ -669,7 +744,9 @@ class Learner:
         """Updates until --updates, or until stop() says so (run.py: when every actor has exited)."""
         a = self.args
         server = self.server = Server(address(a.listen), a.authkey.encode(), self.handle)
-        self.say(f"listening on {server.address}; update {self.update}, {sum(p.numel() for p in self.model.parameters()) / 1e6:.1f}M parameters")
+        self.say(
+            f"listening on {server.address}; update {self.update}, {sum(p.numel() for p in self.model.parameters()) / 1e6:.1f}M parameters"
+        )
         started, steps = time.time(), 0
         started_run = started - self.seconds_done
         self.last_progress, self.first_update = started, self.update
@@ -725,7 +802,9 @@ class Learner:
             if self.update % a.log_every == 0:
                 # the parts as means over the last log_every updates (one update's were a poor sample: waits vary)
                 stats.update({k: v / a.log_every for k, v in times.items()})
-                stats["time_other"] = stats["time_update"] - sum(stats.get(k, 0.0) for k in ("time_wait", "time_device", "time_score", "time_train"))
+                stats["time_other"] = stats["time_update"] - sum(
+                    stats.get(k, 0.0) for k in ("time_wait", "time_device", "time_score", "time_train")
+                )
                 times.clear()
                 rate = steps / (time.time() - started)
                 results = list(self.recent_results)
@@ -739,7 +818,8 @@ class Learner:
                 evals = {p: list(r) for p, r in self.eval_results.items() if r}
                 if evals:  # each evaluated policy's last EVAL_WINDOW evaluation games at the fixed stage
                     record += f" | eval {self.eval_handicap:g}: " + " ".join(
-                        f"{p} {v.count('victory') / len(v):.2f} ({len(v)})" for p, v in evals.items())
+                        f"{p} {v.count('victory') / len(v):.2f} ({len(v)})" for p, v in evals.items()
+                    )
                     stats.update({f"eval_won_{p}": v.count("victory") / len(v) for p, v in evals.items()})
                 if results:  # the learner's games: how long they last, and its economy (gold mined per minute)
                     record += f" | minutes {np.mean([r[2] for r in results]):.1f} gold/min {np.mean([r[3] for r in results]):.0f}"
@@ -747,9 +827,14 @@ class Learner:
                               **{f"ladder_{k}_total": self.outcomes.get(f"ladder {o}", 0) for k, o in
                                  (("won", "victory"), ("lost", "defeat"), ("timeout", "time limit"))},
                               "handicap": self.league.handicap})  # fmt: skip
-                fields = " ".join(f"{k} {v}" if k.endswith("_total") else f"{k} {v:.3g}" for k, v in sorted(stats.items()))
-                self.say(f"update {self.update} {rate:.0f} steps/s games {self.games} ladder {self.league.rung} "
-                         f"({self.league.level + 1}/{len(self.league.ladder)}) | {record} | {fields}" + (" (warm-up)" if self.update <= a.warmup else ""))
+                fields = " ".join(
+                    f"{k} {v}" if k.endswith("_total") else f"{k} {v:.3g}" for k, v in sorted(stats.items())
+                )
+                self.say(
+                    f"update {self.update} {rate:.0f} steps/s games {self.games} ladder {self.league.rung} "
+                    f"({self.league.level + 1}/{len(self.league.ladder)}) | {record} | {fields}"
+                    + (" (warm-up)" if self.update <= a.warmup else "")
+                )
             if self.update % a.snapshot_every == 0:
                 name = f"u{self.update:06d}"
                 torch.save(self._weights(), self.out / "pool" / f"{name}.pt")
@@ -812,99 +897,245 @@ class Learner:
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument("--init", required=True, help="the KL's anchor (the clone, or a checkpoint chosen as better), and "
-                   "the start without --start")
-    p.add_argument("--start", default="", help="the weights to start from, apart from the anchor (another run's "
-                   "last.pt or a checkpoint; default --init). Until 2026-10-13 a run from another's last.pt took it as "
-                   "its anchor too: cb7's anchor was cb6's end, cb8's cb7's")
-    p.add_argument("--carry-adam", action=argparse.BooleanOptionalAction, default=True, help="the start's Adam state "
-                   "too, when it is a learner's checkpoint (--no-: a fresh optimizer)")
+    p.add_argument(
+        "--init",
+        required=True,
+        help="the KL's anchor (the clone, or a checkpoint chosen as better), and the start without --start",
+    )
+    p.add_argument(
+        "--start",
+        default="",
+        help="the weights to start from, apart from the anchor (another run's "
+        "last.pt or a checkpoint; default --init). Until 2026-10-13 a run from another's last.pt took it as "
+        "its anchor too: cb7's anchor was cb6's end, cb8's cb7's",
+    )
+    p.add_argument(
+        "--carry-adam",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="the start's Adam state too, when it is a learner's checkpoint (--no-: a fresh optimizer)",
+    )
     p.add_argument("--out", required=True)
     p.add_argument("--listen", default="0.0.0.0:7600")
     p.add_argument("--authkey", default=os.environ.get("WC3_SELFPLAY_KEY", "wc3-selfplay"))
     p.add_argument("--batch", type=int, default=128, help="chunks per update (more: less weight lag per chunk)")
     p.add_argument("--buffer", type=int, default=2048, help="chunks kept waiting at most (older ones drop)")
-    p.add_argument("--max-lag", type=int, default=24, help="chunks made with weights more updates old than this are "
-                   "dropped, not trained on (sp15 trained on chunks ~21 updates old when the games outran the learner)")
-    p.add_argument("--actor-values", action=argparse.BooleanOptionalAction, default=True,
-                   help="GAE from the values the actors recorded (no value pass of the learner's own)")
-    p.add_argument("--epochs", type=int, default=1, help="passes over each batch: 1 lets the one L4 take in twice the new games (it was the limit at 2)")
+    p.add_argument(
+        "--max-lag",
+        type=int,
+        default=24,
+        help="chunks made with weights more updates old than this are "
+        "dropped, not trained on (sp15 trained on chunks ~21 updates old when the games outran the learner)",
+    )
+    p.add_argument(
+        "--actor-values",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="GAE from the values the actors recorded (no value pass of the learner's own)",
+    )
+    p.add_argument(
+        "--epochs",
+        type=int,
+        default=1,
+        help="passes over each batch: 1 lets the one L4 take in twice the new games (it was the limit at 2)",
+    )
     p.add_argument("--minibatch", type=int, default=32, help="chunks per gradient step")
-    p.add_argument("--update-pause-ms", type=float, default=0, help="after each gradient step, wait for the GPU and then "
-                   "this long, so the inference process's batches are not stuck behind the update (learner and inference "
-                   "on one GPU; warcraftsim: 8 ms took its rounds during an update 39 -> 6 ms)")
-    p.add_argument("--micro", type=int, default=0, help="chunks through the GPU at once, gradients added up to a "
-                   "minibatch (0: the whole minibatch; an L4's 24 GB needs 4: 8 ran out once games grew)")
+    p.add_argument(
+        "--update-pause-ms",
+        type=float,
+        default=0,
+        help="after each gradient step, wait for the GPU and then "
+        "this long, so the inference process's batches are not stuck behind the update (learner and inference "
+        "on one GPU; warcraftsim: 8 ms took its rounds during an update 39 -> 6 ms)",
+    )
+    p.add_argument(
+        "--micro",
+        type=int,
+        default=0,
+        help="chunks through the GPU at once, gradients added up to a "
+        "minibatch (0: the whole minibatch; an L4's 24 GB needs 4: 8 ran out once games grew)",
+    )
     p.add_argument("--lr", type=float, default=4e-5, help="cb8-cb9's (2e-5 until then, VPT's)")
     p.add_argument("--clip", type=float, default=0.2)
     p.add_argument("--clip-grad", type=float, default=1.0)
-    p.add_argument("--gamma", type=float, default=0.9999, help="per 250 ms step: a win 15 min away still counts 0.70 (0.9997 gave 0.34, and losing at minute 10 cost more than running out a 15-minute clock)")
-    p.add_argument("--channel-gamma", default="dealt=0.995,taken=0.995", help="a discount of their own for named "
-                   "reward channels (name=gamma,...; the rest --gamma): a fight's trades pay off within seconds, and at "
-                   "0.9999 the dealt and taken critics answered for the next ~40 minutes of fights; 0.995 a ~50 s horizon")
-    p.add_argument("--lam", type=float, default=1.0, help="the policy's advantages: every real reward to the chunk's end "
-                   "counts in full (0.95 until sp40: a reward 5 s away counted 36%%, 15 s away 5%%)")
-    p.add_argument("--critic-lam", type=float, default=0.9, help="the critic's targets (AlphaStar's TD lambda 0.8): "
-                   "lower leans more on its own next guesses, less on one game's luck")
-    p.add_argument("--value-coef", type=float, default=10.0, help="the value loss's weight against the policy's 1 "
-                   "(AlphaStar's and DI-star's win/loss baseline: 10; 0.5 until sp37, whose critic fit fell from ~0.4 to "
-                   "~0.08 once the policy learned)")
-    p.add_argument("--type-entropy", type=float, default=0.0, help="a bonus on the type head's entropy alone (over ln(its "
-                   "options), 0 to 1), beside --entropy's on every head: keeps the policy trying orders. cb4 gave none on "
-                   "98%% of its steps (its type head 0.11 nats, cb1's start 0.59) and stopped improving")
-    p.add_argument("--upgo", type=float, default=0.0, help="UPGO's policy term beside PPO's, at this weight (AlphaStar; "
-                   "DI-star 1.0, as its main term): a step's return follows what came after only while each next step "
-                   "did at least as well as the critic expected, so a good action is not charged for a later mistake")
-    p.add_argument("--explore-floor", type=float, default=0.0, help="each order type but noop at least this chance "
-                   "wherever legal, until it has been chosen --explore-tries times at the stage (each promotion re-arms it), then "
-                   "--explore-min (0: off). Rare "
-                   "but valuable orders get tried: cb5 cast a targeted spell on 0.04%% of steps, about once in 7 "
-                   "fights, too few for PPO to learn whether it pays. 0.005: ~1.8 tries per 1.5-minute fight")
-    p.add_argument("--explore-tries", type=int, default=50_000, help="--explore-floor's tries of a type before its "
-                   "floor comes off at a stage (~45 minutes at 0.5%% of ~3,600 steps/s)")
-    p.add_argument("--explore-min", type=float, default=0.0, help="each order type but noop at least this chance "
-                   "wherever legal once its --explore-tries are done, for good (0: off): none dies out. cb6's hold and "
-                   "stop fell to 0.3%% of steps once its floor came off")
+    p.add_argument(
+        "--gamma",
+        type=float,
+        default=0.9999,
+        help="per 250 ms step: a win 15 min away still counts 0.70 (0.9997 gave 0.34, and losing at minute 10 cost more than running out a 15-minute clock)",
+    )
+    p.add_argument(
+        "--channel-gamma",
+        default="dealt=0.995,taken=0.995",
+        help="a discount of their own for named "
+        "reward channels (name=gamma,...; the rest --gamma): a fight's trades pay off within seconds, and at "
+        "0.9999 the dealt and taken critics answered for the next ~40 minutes of fights; 0.995 a ~50 s horizon",
+    )
+    p.add_argument(
+        "--lam",
+        type=float,
+        default=1.0,
+        help="the policy's advantages: every real reward to the chunk's end "
+        "counts in full (0.95 until sp40: a reward 5 s away counted 36%%, 15 s away 5%%)",
+    )
+    p.add_argument(
+        "--critic-lam",
+        type=float,
+        default=0.9,
+        help="the critic's targets (AlphaStar's TD lambda 0.8): "
+        "lower leans more on its own next guesses, less on one game's luck",
+    )
+    p.add_argument(
+        "--value-coef",
+        type=float,
+        default=10.0,
+        help="the value loss's weight against the policy's 1 "
+        "(AlphaStar's and DI-star's win/loss baseline: 10; 0.5 until sp37, whose critic fit fell from ~0.4 to "
+        "~0.08 once the policy learned)",
+    )
+    p.add_argument(
+        "--type-entropy",
+        type=float,
+        default=0.0,
+        help="a bonus on the type head's entropy alone (over ln(its "
+        "options), 0 to 1), beside --entropy's on every head: keeps the policy trying orders. cb4 gave none on "
+        "98%% of its steps (its type head 0.11 nats, cb1's start 0.59) and stopped improving",
+    )
+    p.add_argument(
+        "--upgo",
+        type=float,
+        default=0.0,
+        help="UPGO's policy term beside PPO's, at this weight (AlphaStar; "
+        "DI-star 1.0, as its main term): a step's return follows what came after only while each next step "
+        "did at least as well as the critic expected, so a good action is not charged for a later mistake",
+    )
+    p.add_argument(
+        "--explore-floor",
+        type=float,
+        default=0.0,
+        help="each order type but noop at least this chance "
+        "wherever legal, until it has been chosen --explore-tries times at the stage (each promotion re-arms it), then "
+        "--explore-min (0: off). Rare "
+        "but valuable orders get tried: cb5 cast a targeted spell on 0.04%% of steps, about once in 7 "
+        "fights, too few for PPO to learn whether it pays. 0.005: ~1.8 tries per 1.5-minute fight",
+    )
+    p.add_argument(
+        "--explore-tries",
+        type=int,
+        default=50_000,
+        help="--explore-floor's tries of a type before its "
+        "floor comes off at a stage (~45 minutes at 0.5%% of ~3,600 steps/s)",
+    )
+    p.add_argument(
+        "--explore-min",
+        type=float,
+        default=0.0,
+        help="each order type but noop at least this chance "
+        "wherever legal once its --explore-tries are done, for good (0: off): none dies out. cb6's hold and "
+        "stop fell to 0.3%% of steps once its floor came off",
+    )
     p.add_argument("--popart-rate", type=float, default=3e-3, help="how fast the value statistics follow the returns")
-    p.add_argument("--entropy", type=float, default=1e-4, help="the entropy bonus, as AlphaStar's: each head's "
-                   "entropy over ln(its options) (0 to 1), summed over the heads a step uses, at AlphaStar's weight. Was "
-                   "0.003 on raw nats (~100x AlphaStar's push): sp35's policy grew random, then fell into a losing habit")
-    p.add_argument("--kl", type=float, default=0.005, help="the KL from the reference policy (0.02 until 2026-10-12: cb1's "
-                   "policy stayed ~0.065 from the clone and stopped improving; DI-star 0.002; VPT starts at "
-                   "0.2 and decays it 0.5%% an update)")
-    p.add_argument("--reset-every", type=int, default=0, help="updates between moving the KL's reference to the "
-                   "current policy (0: always the clone, as AlphaStar and VPT; sp3-sp4's resets let it drop attacking)")
+    p.add_argument(
+        "--entropy",
+        type=float,
+        default=1e-4,
+        help="the entropy bonus, as AlphaStar's: each head's "
+        "entropy over ln(its options) (0 to 1), summed over the heads a step uses, at AlphaStar's weight. Was "
+        "0.003 on raw nats (~100x AlphaStar's push): sp35's policy grew random, then fell into a losing habit",
+    )
+    p.add_argument(
+        "--kl",
+        type=float,
+        default=0.005,
+        help="the KL from the reference policy (0.02 until 2026-10-12: cb1's "
+        "policy stayed ~0.065 from the clone and stopped improving; DI-star 0.002; VPT starts at "
+        "0.2 and decays it 0.5%% an update)",
+    )
+    p.add_argument(
+        "--reset-every",
+        type=int,
+        default=0,
+        help="updates between moving the KL's reference to the "
+        "current policy (0: always the clone, as AlphaStar and VPT; sp3-sp4's resets let it drop attacking)",
+    )
     p.add_argument("--dual-clip", type=float, default=3.0, help="a negative advantage counts at most this many times")
     p.add_argument("--hours", type=float, default=0, help="stop after this long (0: never)")
-    p.add_argument("--start-stage", type=float, default=0, help="the rung's stage to start on, one of the mode's "
-                   "handicaps (default: its first)")
-    p.add_argument("--hold-stage", action="store_true", help="never move up the ladder: a fixed opponent (with "
-                   "--warmup past the run's end, the policy measured as it is)")
-    p.add_argument("--start-rung", default="", help="the ladder's rung to start on, one of the mode's (default: its "
-                   "first, at its first stage; whole games: ai0, ai1, ai2)")
-    p.add_argument("--stall-minutes", type=float, default=20, help="stop when no update finished for this long, "
-                   "three times as long before the first (0: never)")
-    p.add_argument("--minutes", type=float, default=START_MINUTES, help="the games' first time limit (the league extends it)")
-    p.add_argument("--normalize-advantage", action=argparse.BooleanOptionalAction, default=True,
-                   help="rescale each batch's advantages to mean 0, spread 1 (the PPO libraries' default; --no-: raw, in "
-                   "reward units, as AlphaStar and DI-star: sp40's spread was 0.01-0.09, its policy loss then small "
-                   "against everything else)")
-    p.add_argument("--mode", choices=modes.NAMES, default="game", help="what the actors play (training/selfplay/modes): "
-                   "its shaping's weight")
-    p.add_argument("--shaping-scale", type=float, default=1.0, help="every reward channel but the win's, times this "
-                   "(0.2: the win counts five times as much against the shaping as by default)")
+    p.add_argument(
+        "--start-stage",
+        type=float,
+        default=0,
+        help="the rung's stage to start on, one of the mode's handicaps (default: its first)",
+    )
+    p.add_argument(
+        "--hold-stage",
+        action="store_true",
+        help="never move up the ladder: a fixed opponent (with "
+        "--warmup past the run's end, the policy measured as it is)",
+    )
+    p.add_argument(
+        "--start-rung",
+        default="",
+        help="the ladder's rung to start on, one of the mode's (default: its "
+        "first, at its first stage; whole games: ai0, ai1, ai2)",
+    )
+    p.add_argument(
+        "--stall-minutes",
+        type=float,
+        default=20,
+        help="stop when no update finished for this long, three times as long before the first (0: never)",
+    )
+    p.add_argument(
+        "--minutes", type=float, default=START_MINUTES, help="the games' first time limit (the league extends it)"
+    )
+    p.add_argument(
+        "--normalize-advantage",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="rescale each batch's advantages to mean 0, spread 1 (the PPO libraries' default; --no-: raw, in "
+        "reward units, as AlphaStar and DI-star: sp40's spread was 0.01-0.09, its policy loss then small "
+        "against everything else)",
+    )
+    p.add_argument(
+        "--mode",
+        choices=modes.NAMES,
+        default="game",
+        help="what the actors play (training/selfplay/modes): its shaping's weight",
+    )
+    p.add_argument(
+        "--shaping-scale",
+        type=float,
+        default=1.0,
+        help="every reward channel but the win's, times this "
+        "(0.2: the win counts five times as much against the shaping as by default)",
+    )
     p.add_argument("--warmup", type=int, default=50, help="updates training only the critic")
     p.add_argument("--snapshot-every", type=int, default=200)
-    p.add_argument("--evaluate", default="", help="checkpoints the evaluation games (actors' --eval-games) play beside "
-                   "the current policy, comma-separated: each named eval-<run> (runs/cb8/last.pt: eval-cb8)")
-    p.add_argument("--eval-stage", type=float, default=0, help="the ladder stage evaluation games are played at, "
-                   "fixed for the run (0: the stage it starts on)")
-    p.add_argument("--save-every", type=int, default=10, help="updates between saves (a few minutes: what a "
-                   "preempted learner loses)")
+    p.add_argument(
+        "--evaluate",
+        default="",
+        help="checkpoints the evaluation games (actors' --eval-games) play beside "
+        "the current policy, comma-separated: each named eval-<run> (runs/cb8/last.pt: eval-cb8)",
+    )
+    p.add_argument(
+        "--eval-stage",
+        type=float,
+        default=0,
+        help="the ladder stage evaluation games are played at, fixed for the run (0: the stage it starts on)",
+    )
+    p.add_argument(
+        "--save-every",
+        type=int,
+        default=10,
+        help="updates between saves (a few minutes: what a preempted learner loses)",
+    )
     p.add_argument("--log-every", type=int, default=10)
     p.add_argument("--updates", type=int, default=0, help="stop after this many (0: never)")
-    p.add_argument("--compile", action=argparse.BooleanOptionalAction, default=True,
-                   help="torch.compile the model's blocks on a GPU (--no-compile: eager)")
+    p.add_argument(
+        "--compile",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="torch.compile the model's blocks on a GPU (--no-compile: eager)",
+    )
     return p
 
 

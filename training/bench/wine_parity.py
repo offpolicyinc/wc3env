@@ -4,6 +4,7 @@ reproducible and the check means nothing), then the images are compared step by 
 
     python -m training.bench.wine_parity --images build/modal-image-stable.txt build/modal-image.txt
 """
+
 import argparse
 import json
 import sys
@@ -16,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 from training.cloud import selfplay  # noqa: E402
 from training.cloud.scripts import _preamble, low_video  # noqa: E402
 
-PLAY = r'''
+PLAY = r"""
 import hashlib, json, sys
 from wc3env.session import GameConfig, MatchSetup, PlayerConfig
 from wc3env.vector import VectorSession, wine_workers
@@ -36,7 +37,7 @@ with VectorSession(configs, group_size=2, launch=wine_workers()) as s:
             i, obs, done, info = s.recv()
             log[i].append([state(obs[0]), state(obs[1]), len(obs[0].units), len(obs[1].units)])
 print(json.dumps(log))
-'''
+"""
 
 
 def play(image_file: Path, games: int, steps: int, out: dict) -> None:
@@ -48,8 +49,14 @@ def play(image_file: Path, games: int, steps: int, out: dict) -> None:
         box, at = selfplay.games_sandbox(types.SimpleNamespace(cpu=4, memory=0, games=games, per_box=1, rest=["--hours", "1"]),
                                          image, _code(), made)  # fmt: skip
         _send(box, "/work/play.py", PLAY.encode())
-        script = _preamble("/work:/opt/host", "/sessions/out") + low_video() + "".join(
-            f"python3 /work/play.py {games} {steps} > /sessions/out/play{k}.json 2>> /sessions/out/play.err\n" for k in (0, 1))
+        script = (
+            _preamble("/work:/opt/host", "/sessions/out")
+            + low_video()
+            + "".join(
+                f"python3 /work/play.py {games} {steps} > /sessions/out/play{k}.json 2>> /sessions/out/play.err\n"
+                for k in (0, 1)
+            )
+        )
         _send(box, "/work/play.sh", script.encode())
         stream(box, "chown 10001:10001 /work/play.sh /work/play.py", root=True)
         p = box.exec("bash", "-c", "su worker -s /bin/bash -p -c 'bash /opt/worker/with-display.sh bash /work/play.sh' > /dev/null 2>&1; "
@@ -57,7 +64,12 @@ def play(image_file: Path, games: int, steps: int, out: dict) -> None:
         p.wait()
         lines = p.stdout.read().splitlines()
         plays = [json.loads(x) for x in lines[1:] if x.startswith("{")]
-        out[image_file.name] = {"at": at, "wine": lines[0], "plays": plays, "err": [x for x in lines[1:] if x and not x.startswith("{")]}
+        out[image_file.name] = {
+            "at": at,
+            "wine": lines[0],
+            "plays": plays,
+            "err": [x for x in lines[1:] if x and not x.startswith("{")],
+        }
     finally:
         for box in made:
             box.terminate()
@@ -68,7 +80,10 @@ def compare(a: dict, b: dict) -> str:
     parts = []
     for g in a:
         n = next((k for k, (x, y) in enumerate(zip(a[g], b[g])) if x != y), None)
-        parts.append(f"game {g}: " + ("all " + str(len(a[g])) + " agree" if n is None else f"differ from step {n} ({n / 4:.0f} s)"))
+        parts.append(
+            f"game {g}: "
+            + ("all " + str(len(a[g])) + " agree" if n is None else f"differ from step {n} ({n / 4:.0f} s)")
+        )
     return "; ".join(parts)
 
 
@@ -85,7 +100,10 @@ def main() -> None:
     for t in threads:
         t.join()
     for name, r in out.items():
-        print(f"{name} ({r['wine']}, {r['at']}):", "two plays: " + compare(*r["plays"]) if len(r["plays"]) == 2 else f"failed: {r['err']}")
+        print(
+            f"{name} ({r['wine']}, {r['at']}):",
+            "two plays: " + compare(*r["plays"]) if len(r["plays"]) == 2 else f"failed: {r['err']}",
+        )
     names = [n for n in out if out[n]["plays"]]
     for x, y in zip(names, names[1:]):
         print(f"{x} vs {y}:", compare(out[x]["plays"][0], out[y]["plays"][0]))

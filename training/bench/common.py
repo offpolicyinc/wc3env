@@ -27,8 +27,7 @@ def image(*commands: str):
     if commands:
         built = built.run_commands(*commands)
     return (
-        built
-        .add_local_dir(ROOT / "wc3hook", "/root/wc3hook", ignore=lambda p: p.name not in FEATURE_SOURCES)
+        built.add_local_dir(ROOT / "wc3hook", "/root/wc3hook", ignore=lambda p: p.name not in FEATURE_SOURCES)
         .add_local_dir(ROOT / "src" / "wc3env", "/root/wc3env", ignore=["**/*.dll", "**/__pycache__/**"])
         .add_local_dir(ROOT / "training", "/root/training", ignore=["**/__pycache__/**", "tests/**"])
         .add_local_file(OBSERVATIONS, "/root/obs.pkl")

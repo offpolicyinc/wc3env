@@ -39,6 +39,8 @@ STEP_MS = 250  # one decision per step: 4 a second
 def env_race(race: str) -> str:
     """Our race name as wc3env spells it."""
     return race.replace("nightelf", "night_elf")
+
+
 OWNERS = ("none", "me", "enemy", "creep", "neutral", "item", "tree")  # embedding ids 0..6
 MAX_BUFFS, MAX_ABILITIES = 8, 5
 HISTORY = 4  # decisions remembered for "recent" flags and the previous-actions scalars
@@ -214,5 +216,3 @@ def build_map(n, unit_cell, unit_owner, unit_type, structure, trees, static: Sta
 def scalar_size() -> int:
     """The length of _scalars' vector: 9 numbers, both races one-hot, research levels, unit counts."""
     return 9 + 2 * len(RACES) + len(upgrade_ids()) + len(type_ids()) + 1
-
-

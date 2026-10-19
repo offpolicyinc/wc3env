@@ -23,24 +23,38 @@ def main() -> int:
     p.add_argument("--actors", type=int, default=1)
     p.add_argument("--games", type=int, default=4, help="per actor")
     p.add_argument("--ai-games", type=int, default=1, help="per actor")
-    p.add_argument("--eval-games", type=int, default=0, help="per actor, of --games: only evaluate (learner's --evaluate)")
+    p.add_argument(
+        "--eval-games", type=int, default=0, help="per actor, of --games: only evaluate (learner's --evaluate)"
+    )
     p.add_argument("--mode", default="game", help="whole games or fights (training/selfplay/modes)")
-    p.add_argument("--races", nargs=2, metavar=("OWN", "OPPONENT"), help="one matchup in every game (default: each in turn)")
-    p.add_argument("--steps", type=int, default=0, help="per actor: stop after this many game steps (0: never; for tests)")
+    p.add_argument(
+        "--races", nargs=2, metavar=("OWN", "OPPONENT"), help="one matchup in every game (default: each in turn)"
+    )
+    p.add_argument(
+        "--steps", type=int, default=0, help="per actor: stop after this many game steps (0: never; for tests)"
+    )
     p.add_argument("--wine", action="store_true", help="the actors' games under Wine (a Linux host; $WINEPREFIX)")
     p.add_argument("--nice", type=int, default=0, help="with --wine: the games' niceness")
     p.add_argument("--port", type=int, default=7600, help="the learner's; the inference process's is the next one")
-    p.add_argument("--learner-gpu-share", type=int, default=65, help="under NVIDIA MPS, the percent of the GPU's SMs "
-                   "the learner may use (100: all), so inference's batches are not stuck behind its kernels: on one 3090 "
-                   "Ti, 65 took ~10%% more decided steps a second, inference's batch p90 18 -> 11 ms (rsi/log.md E15). "
-                   "Without MPS it does nothing")
+    p.add_argument(
+        "--learner-gpu-share",
+        type=int,
+        default=65,
+        help="under NVIDIA MPS, the percent of the GPU's SMs "
+        "the learner may use (100: all), so inference's batches are not stuck behind its kernels: on one 3090 "
+        "Ti, 65 took ~10%% more decided steps a second, inference's batch p90 18 -> 11 ms (rsi/log.md E15). "
+        "Without MPS it does nothing",
+    )
     p.add_argument("rest", nargs="*", help="learner flags, after --")
     args = p.parse_args()
     learner_args = learner.parser().parse_args(
         ["--init", args.init, "--out", args.out, "--listen", f"127.0.0.1:{args.port}", "--mode", args.mode, *args.rest]
     )
     learner_args.on_save = None
-    env = {**os.environ, "PYTHONPATH": os.pathsep.join(filter(None, [os.getcwd(), "src", os.environ.get("PYTHONPATH")]))}
+    env = {
+        **os.environ,
+        "PYTHONPATH": os.pathsep.join(filter(None, [os.getcwd(), "src", os.environ.get("PYTHONPATH")])),
+    }
     if args.learner_gpu_share < 100:  # read when this process's CUDA context is made (in Learner); not the children's
         os.environ["CUDA_MPS_ACTIVE_THREAD_PERCENTAGE"] = str(args.learner_gpu_share)
     the_learner = learner.Learner(learner_args)
@@ -60,7 +74,8 @@ def main() -> int:
     try:
         the_learner.run(stop=lambda: all(proc.poll() is not None for proc in children[1:]))
     finally:
-        the_learner.server.close()
+        if hasattr(the_learner, "server"):  # not when it could not listen (the port taken): that error shows instead
+            the_learner.server.close()
         for proc in children:
             proc.terminate()
     return 0

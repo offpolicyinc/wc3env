@@ -79,7 +79,9 @@ def bench(seats: int = 58, unit_rows: int = 96, compiled: str = "") -> dict:
     length = model.length[rows].clamp(max=62)
     window_mask = torch.arange(64, device=dev)[None] < length[:, None]
     state = [h[rows] for h in model.state]
-    flat = {k: v[:, 0] for k, v in batch.items() if v.dim() >= 2 and k not in ("static_map",) and not k.startswith("plan_")}
+    flat = {
+        k: v[:, 0] for k, v in batch.items() if v.dim() >= 2 and k not in ("static_map",) and not k.startswith("plan_")
+    }
     flat["static_map"] = batch["static_map"]
     auto = lambda: torch.autocast("cuda", torch.bfloat16)  # noqa: E731
 

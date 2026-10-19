@@ -95,7 +95,9 @@ def bench(setups: list[tuple[int, int, float]]) -> list[dict]:
 
     traces = pickle.load(open("/root/obs.pkl", "rb"))
     rng = np.random.default_rng(0)
-    chunks = play(Agents(load("/root/model.pt", "cuda"), 1.0, 0), list(range(8)), 385, traces, Static.load(MAP, ("orc", "human")))
+    chunks = play(
+        Agents(load("/root/model.pt", "cuda"), 1.0, 0), list(range(8)), 385, traces, Static.load(MAP, ("orc", "human"))
+    )
     chunks = [grow(c, rng) for c in chunks]
     for k, c in enumerate(chunks):
         c["reward"][-1] = float((-1, 0, 1)[k % 3])

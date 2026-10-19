@@ -57,7 +57,9 @@ def actor(seed: int, port: int, results) -> None:
                 obs = [traces[games[j]][step[h]] for j in members]
                 blocks = [states[j].step(o, seats[j].last) for j, o in zip(members, obs)]
                 sent[h] = time.perf_counter()
-                begun.append((h, agents.begin([seats[j] for j in members], obs, blocks, [b["scalars"] for b in blocks])))
+                begun.append(
+                    (h, agents.begin([seats[j] for j in members], obs, blocks, [b["scalars"] for b in blocks]))
+                )
         if not begun:
             time.sleep(max(0.0, min(r for r, s in zip(ready, step) if s < STEPS) - time.perf_counter()))
             continue

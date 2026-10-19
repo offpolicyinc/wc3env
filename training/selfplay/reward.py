@@ -40,13 +40,23 @@ UPGRADES = 0.75  # research levels: 1-5 in an Orc pro's game
 FIGHT = 2.0  # per 1,000 of value destroyed while shaping is 1 (a grunt 0.4), buildings only as they die; FIGHT_FLOOR of it once winning
 HIT = 5.0  # seconds: an enemy building's death counts while the player's units damaged it this recently
 DECAY = 0.6  # per 10 game minutes
-STAGES = (480, 960, 1440)  # units and upgrades: x0.5 after 8 game minutes, x0.5 again after 16, nothing after 24 (AlphaStar's)
+STAGES = (
+    480,
+    960,
+    1440,
+)  # units and upgrades: x0.5 after 8 game minutes, x0.5 again after 16, nothing after 24 (AlphaStar's)
 WORKERS = frozenset(("hpea", "opeo", "ewsp", "uaco"))
 SUPPLY = frozenset(("hhou", "otrb", "uzig", "emow"))  # food buildings: left out of build orders, as AlphaStar's
 DEATH = next(k for k, name in EVENT_KINDS.items() if name == "death")
-DAMAGED = next(k for k, name in EVENT_KINDS.items() if name == "damaged")  # unit_id the victim, other_id the source, value hundredths
+DAMAGED = next(
+    k for k, name in EVENT_KINDS.items() if name == "damaged"
+)  # unit_id the victim, other_id the source, value hundredths
 UPGRADE_FINISH = next(k for k, name in EVENT_KINDS.items() if name == "upgrade_finish")
-FINISHES = frozenset(k for k, name in EVENT_KINDS.items() if name in ("construct_finish", "train_finish", "research_finish", "upgrade_finish"))
+FINISHES = frozenset(
+    k
+    for k, name in EVENT_KINDS.items()
+    if name in ("construct_finish", "train_finish", "research_finish", "upgrade_finish")
+)
 
 
 @cache
@@ -102,10 +112,18 @@ class Shaping:
         research = reference()["upgrades"]
         # the plan's whole game: type -> how many the pro made (plan.mix is sqrt(count) / 4)
         mix = (plan or {}).get("mix")
-        counts = {} if mix is None else {fourcc(ids[int(i)]): round(float(4 * mix[i]) ** 2) for i in np.flatnonzero(mix) if int(i) in ids}
+        counts = (
+            {}
+            if mix is None
+            else {fourcc(ids[int(i)]): round(float(4 * mix[i]) ** 2) for i in np.flatnonzero(mix) if int(i) in ids}
+        )
         self.planned = bool(counts)  # the empty plan: nothing to compare with, so units and upgrades pay nothing
-        self.units = {c for c, n in counts.items() if c and n > 0 and c not in WORKERS and c not in research}  # the pro's types
-        self.levels = {(c, k) for c, n in counts.items() if c in research for k in range(1, n + 1)}  # and research levels
+        self.units = {
+            c for c, n in counts.items() if c and n > 0 and c not in WORKERS and c not in research
+        }  # the pro's types
+        self.levels = {
+            (c, k) for c, n in counts.items() if c in research for k in range(1, n + 1)
+        }  # and research levels
         order = [fourcc(ids.get(int(a), 0)) for a in (plan or {}).get("order", []) if a > 0]
         self.opening = [c for c in order if c and c not in WORKERS and c not in SUPPLY]  # the pro's
         self.built: list[str] = []  # the player's, the same way (its first OPENING)
@@ -143,10 +161,14 @@ class Shaping:
                 continue
             if code in reference()["upgrades"]:
                 level = self.researched[code] = self.researched.get(code, 0) + 1
-                out[CHANNELS.index("upgrades")] += UPGRADES * (1 if (code, level) in self.levels else -1) * stage(after.game_time_seconds)
+                out[CHANNELS.index("upgrades")] += (
+                    UPGRADES * (1 if (code, level) in self.levels else -1) * stage(after.game_time_seconds)
+                )
             elif code not in self.made:
                 self.made.add(code)
-                out[CHANNELS.index("units")] += UNITS * (1 if code in self.units else -1) * stage(after.game_time_seconds)
+                out[CHANNELS.index("units")] += (
+                    UNITS * (1 if code in self.units else -1) * stage(after.game_time_seconds)
+                )
         died = {int(e["unit_id"]) for e in after.events if int(e["kind"]) == DEATH}
         now = after.game_time_seconds
         mine = own | set(self.health["own"]) if self.health is not None else own  # with those that died this step

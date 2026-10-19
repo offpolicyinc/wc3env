@@ -60,7 +60,9 @@ def play(label: str, checkpoint: str, options: dict) -> list[dict]:
                             remote=PORT, replays=r"Z:\sessions\out\replays", empty_half=options["empty_half"], handicap=options["handicap"],
                             record=options.get("record", False)):  # fmt: skip
             data = row.pop("data", None)
-            if data is not None:  # each step's decision, the critic's values and the reward: runs/evals/<label>/game-<k>.npz
+            if (
+                data is not None
+            ):  # each step's decision, the critic's values and the reward: runs/evals/<label>/game-<k>.npz
                 (Path("/dataset/runs/evals") / label).mkdir(parents=True, exist_ok=True)
                 keep = ("type", "argument", "game_time", "value", "reward", "done", "log_prob")
                 np.savez_compressed(f"/dataset/runs/evals/{label}/game-{len(rows)}.npz", **{k: data[k] for k in keep})
@@ -80,16 +82,26 @@ def main() -> None:
     p.add_argument("checkpoint", help="its path on the wc3-dataset Volume")
     p.add_argument("--label", default="")
     p.add_argument("--games", type=int, default=20)
-    p.add_argument("--boxes", type=int, default=0, help="games sandboxes, the games split evenly (0: one per GAMES_A_BOX)")
+    p.add_argument(
+        "--boxes", type=int, default=0, help="games sandboxes, the games split evenly (0: one per GAMES_A_BOX)"
+    )
     p.add_argument("--cpu", type=float, default=0, help="each sandbox's cores (0: from its games, CORES_A_GAME)")
     p.add_argument("--races", nargs=2, default=("orc", "orc"))
     p.add_argument("--minutes", type=float, default=15)
     p.add_argument("--difficulty", type=int, default=0)
     p.add_argument("--handicap", type=float, default=1.0, help="player 1's hit points as a share of their own")
-    p.add_argument("--map", default="", help="a map of build/maps instead of Echo Isles (python -m tools.prepare.fastmap)")
-    p.add_argument("--empty-half", action="store_true", help="every other game with the empty plan, to see the plan used")
-    p.add_argument("--record", action="store_true", help="each game's steps (decisions, critic values, rewards as "
-                   "self-play pays them) to runs/evals/<label>/game-<k>.npz on the Volume")
+    p.add_argument(
+        "--map", default="", help="a map of build/maps instead of Echo Isles (python -m tools.prepare.fastmap)"
+    )
+    p.add_argument(
+        "--empty-half", action="store_true", help="every other game with the empty plan, to see the plan used"
+    )
+    p.add_argument(
+        "--record",
+        action="store_true",
+        help="each game's steps (decisions, critic values, rewards as "
+        "self-play pays them) to runs/evals/<label>/game-<k>.npz on the Volume",
+    )
     a = p.parse_args()
     a.boxes = a.boxes or -(-a.games // GAMES_A_BOX)
     if a.games % (2 * a.boxes):
@@ -129,8 +141,14 @@ def main() -> None:
                 if a.map:
                     install_map(box, f"Maps/FrozenThrone/{a.map}", (ROOT / "build" / "maps" / a.map).read_bytes())
                 send(box, "/work/bridge.sh", bridge([address], per_box // 2).encode())
-                stream(box, "mkdir -p /sessions/out/replays && chown -R 10001:10001 /work/bridge.sh /sessions/out", root=True)
-                box.exec("bash", "-c", "su worker -s /bin/bash -p -c 'bash /opt/worker/with-display.sh bash /work/bridge.sh'")
+                stream(
+                    box,
+                    "mkdir -p /sessions/out/replays && chown -R 10001:10001 /work/bridge.sh /sessions/out",
+                    root=True,
+                )
+                box.exec(
+                    "bash", "-c", "su worker -s /bin/bash -p -c 'bash /opt/worker/with-display.sh bash /work/bridge.sh'"
+                )
             call.get()
             for k, box in enumerate(boxes):  # the replays, before the sandboxes go
                 folder = ROOT / "build" / "evals" / label / f"box-{k}"

@@ -75,7 +75,9 @@ class League:
     stage: int = 0  # the rung's handicap stage (an index of `handicaps`)
     hold: bool = False  # never move on (a fixed opponent: measuring a policy, not training it up a ladder)
     finished: list = field(default_factory=list)  # (when it began, score) of ladder games here not yet counted
-    oldest: dict = field(default_factory=dict)  # actor -> (when its oldest running ladder game began or None, when it said)
+    oldest: dict = field(
+        default_factory=dict
+    )  # actor -> (when its oldest running ladder game began or None, when it said)
 
     def __setstate__(self, state: dict) -> None:
         """A league saved before a field existed gets that field's default (resuming an older run)."""
@@ -164,8 +166,13 @@ class League:
     def plan(self) -> dict:
         """What actors need: the ladder's rung, its stage and handicap, each snapshot's PFSP weight and the time limit."""
         weights = {s.name: (1 - s.win_rate()) ** 2 for s in self.snapshots}
-        return {"rung": self.rung, "stage": self.stage, "handicap": self.handicap, "snapshots": weights,
-                "minutes": self.minutes}
+        return {
+            "rung": self.rung,
+            "stage": self.stage,
+            "handicap": self.handicap,
+            "snapshots": weights,
+            "minutes": self.minutes,
+        }
 
 
 def choose(plan: dict, rng: np.random.Generator) -> str:

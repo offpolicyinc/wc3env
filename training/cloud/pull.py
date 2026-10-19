@@ -64,7 +64,9 @@ def main() -> int:
     token = subprocess.run([gcloud, "auth", "print-access-token", f"--impersonate-service-account={READER}"],
                            capture_output=True, text=True, check=True).stdout.strip()  # fmt: skip
     with modal.enable_output(), app.run():
-        print(pull.with_options(secrets=[modal.Secret.from_dict({"GCS_TOKEN": token})]).remote(args.source, args.folder))
+        print(
+            pull.with_options(secrets=[modal.Secret.from_dict({"GCS_TOKEN": token})]).remote(args.source, args.folder)
+        )
     return 0
 
 

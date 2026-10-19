@@ -30,7 +30,9 @@ def bench() -> list[dict]:
     from training.selfplay.learner import Learner, parser
 
     traces = pickle.load(open("/root/obs.pkl", "rb"))
-    chunks = play(Agents(load("/root/model.pt", "cuda"), 1.0, 0), list(range(8)), 385, traces, Static.load(MAP, ("orc", "human")))
+    chunks = play(
+        Agents(load("/root/model.pt", "cuda"), 1.0, 0), list(range(8)), 385, traces, Static.load(MAP, ("orc", "human"))
+    )
     for k, c in enumerate(chunks):  # some rewards, so the advantages are not all zero
         c["reward"][-1] = float((-1, 0, 1)[k % 3])
     rows = []

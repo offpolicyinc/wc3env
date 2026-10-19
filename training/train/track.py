@@ -36,7 +36,9 @@ def parse(line: str) -> tuple[int, dict] | None:
         parts = m[5].split(" | ")
         for who, won, lost, time in OUTCOME.findall(parts[0]):
             who = who.replace("/", "_")
-            values.update({f"games/{who}_won": float(won), f"games/{who}_lost": float(lost), f"games/{who}_time": float(time)})
+            values.update(
+                {f"games/{who}_won": float(won), f"games/{who}_lost": float(lost), f"games/{who}_time": float(time)}
+            )
         values.update({f"play/{k.replace('/', '_')}": float(v) for part in parts[1:] for k, v in PAIRS.findall(part)})
         return int(m[1]), values
     return None
@@ -148,7 +150,11 @@ def main() -> None:
     p.add_argument("log", nargs="?", help="a run's log.txt")
     p.add_argument("--name")
     p.add_argument("--group", default="")
-    p.add_argument("--workspace", action="store_true", help="(re)make the project's charts view instead (pip install wandb-workspaces)")
+    p.add_argument(
+        "--workspace",
+        action="store_true",
+        help="(re)make the project's charts view instead (pip install wandb-workspaces)",
+    )
     a = p.parse_args()
     if a.workspace:
         print(workspace())

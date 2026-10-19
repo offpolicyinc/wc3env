@@ -1,6 +1,7 @@
 # To do
 
-One doc per area of work; finished lists in [done/](done/).
+One doc per area of work; finished lists in [done/](done/). The experiments from these lists are queued and
+logged in [../rsi/](../rsi/philosophy.md).
 
 | Doc | What |
 |---|---|

@@ -25,7 +25,7 @@ sessions/
 assets/
 
 # hook env build outputs and per-process logs
-wc3hook/out/
+wc3hook/out*/
 tests/e2e/out/
 tests/e2e/extended/out/
 tests/e2e/out_*.log

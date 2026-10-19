@@ -438,6 +438,8 @@ class Actor:
         """Game i's step came back: its rewards recorded; at an episode's end, the result reported and the next
         begun. Returns the observations to decide on next (None: the next episode is being staged)."""
         game = self.games[i]
+        if info.get("reset"):  # the map loaded again (send_reset below): the next episode begins
+            return self._begin(i, obs, session)
         if game.staging:  # the step that staged the episode: its first observations
             game.staging = False
             if done:  # (the game ended in it: stage again in the next one)
@@ -462,14 +464,11 @@ class Actor:
                 if len(rec):
                     self._ship(game, slot, rec.chunk(bootstrap=0.0))
                 self._flush(game, slot)
-            if step.reload:  # the map loaded again (a game at its time limit; a fights' game whose clock is long)
-                try:
-                    obs = session.reset_one(i)
-                except RuntimeError as error:  # its process died starting the next game: once more, in a new one
-                    # (uncaught, the whole actor restarted with all its games: 69 times in sp33's 36 minutes)
-                    self.report(f"actor {self.args.seed}: game {i} failed to reset ({error}); starting it again")
-                    self.failures += 1
-                    obs = session.reset_one(i)
+            if step.reload:  # the map loaded again (a game at its time limit; every fight),
+                # without waiting: a new process takes 2-3 s and the other games step on (a failure comes back
+                # through recv, and _lost starts the game again)
+                session.send_reset(i)
+                return None
             return self._begin(i, obs, session)
         return obs
 

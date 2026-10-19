@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import glob
 import multiprocessing as mp
 import os
 import queue
@@ -183,6 +184,25 @@ def _serve(listen: str, authkey: bytes, batch: int, buffer: int, max_lag: int, w
         made += 1
 
 
+def _remove_orphans(root: str, age: float = 600.0) -> None:
+    """Removes the batch folders in `root` that learners killed before close() left (tmpfs never frees them; 3 GB
+    each): this user's, older than `age` seconds (a starting learner's folder is mapped only once its slots are made),
+    with no file in them mapped by a live process."""
+    now, folders = time.time(), set()
+    for folder in glob.glob(os.path.join(root, "wc3-batches-*")):
+        with contextlib.suppress(OSError):
+            stat = os.stat(folder)
+            if stat.st_uid == os.getuid() and now - stat.st_mtime > age:
+                folders.add(folder)
+    for maps in glob.glob("/proc/[0-9]*/maps") if folders else ():
+        with contextlib.suppress(OSError), open(maps) as lines:
+            for line in lines:
+                if "/wc3-batches-" in line:
+                    folders.discard(os.path.dirname(line.split(maxsplit=5)[-1].removesuffix(" (deleted)\n").strip()))
+    for folder in folders:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 class Batches:
     """The learner's handle on the batch process: get() the next batch, set `version` after each update. A process
     that died is started again (the chunks it held are lost; the actors keep sending)."""
@@ -191,6 +211,8 @@ class Batches:
                  scoring: tuple | None = None):
         # in memory (Linux's /dev/shm): a batch written to the container's /tmp, on disk, took 0.8 s of its 1.1
         root = "/dev/shm" if os.path.isdir("/dev/shm") else tempfile.gettempdir()
+        if root == "/dev/shm":
+            _remove_orphans(root)
         folder = self.folder = tempfile.mkdtemp(prefix="wc3-batches-", dir=root)  # its own: no other learner reads these
         self.mapped: dict = {}  # path -> its pages, mapped once here (and registered with CUDA)
         self.ctx = mp.get_context("spawn")  # the learner's CUDA context must not be forked

@@ -45,6 +45,26 @@ user32.SetWindowPos.argtypes = [
 ]
 
 
+class _MemoryCounters(ctypes.Structure):  # PROCESS_MEMORY_COUNTERS
+    _fields_ = [("cb", wintypes.DWORD), ("PageFaultCount", wintypes.DWORD)] + [
+        (name, ctypes.c_size_t)
+        for name in (
+            "PeakWorkingSetSize",
+            "WorkingSetSize",
+            "QuotaPeakPagedPoolUsage",
+            "QuotaPagedPoolUsage",
+            "QuotaPeakNonPagedPoolUsage",
+            "QuotaNonPagedPoolUsage",
+            "PagefileUsage",
+            "PeakPagefileUsage",
+        )
+    ]
+
+
+k32.K32GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(_MemoryCounters), wintypes.DWORD]
+k32.K32GetProcessMemoryInfo.restype = wintypes.BOOL
+
+
 def hook_dll() -> Path:
     override = getattr(settings(), "hook_dll", None)
     if override:
@@ -75,6 +95,14 @@ class Game:
         finally:
             k32.CloseHandle(self._process_handle)
             self.pipe.close()
+
+    def private_bytes(self) -> int:
+        """The process's private memory (PROCESS_MEMORY_COUNTERS.PagefileUsage; under Wine its resident anonymous
+        memory and swap, RssAnon + VmSwap)."""
+        counters = _MemoryCounters(cb=ctypes.sizeof(_MemoryCounters))
+        if not k32.K32GetProcessMemoryInfo(self._process_handle, ctypes.byref(counters), counters.cb):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return counters.PagefileUsage
 
     def log(self) -> str:
         """The DLL's log in this launch's data directory."""

@@ -50,8 +50,9 @@ results and staging clear; speed, wait floor and render settings persist. Failed
 `bad_status`; `GameSession` closes the failed process. Its `reset()` also configures and observes.
 By default a session replaces the process before episode 33 to bound engine retention.
 `GameConfig.max_episodes_per_process` accepts a positive integer or `None` to disable that
-limit. Replacement preserves the match seed and successful `RpcClient.debug` speed,
-wait-floor and rendering settings; groups and episode observations always clear.
+limit; `max_process_memory_mb` also replaces the process at a reset once its private memory passes
+that budget. Replacement preserves the match seed and successful `RpcClient.debug` speed, wait-floor and
+rendering settings; groups and episode observations always clear.
 The raw `reset` RPC remains an in-process reload without this host policy.
 
 `save_replay` runs the engine's own save: it closes the recorder and moves `Replay/TempReplay.w3g` to the

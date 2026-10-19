@@ -338,6 +338,7 @@ class VectorSession:
         self._results: queue.Queue = queue.Queue()
         self._waiting: list = []  # results read while waiting for a particular game
         self._busy: set[int] = set()
+        self._resetting: set[int] = set()  # games whose busy message is a send_reset
         self._sent: dict[int, float] = {}  # game -> when its last message went out (perf_counter)
         self._workers = []
         for w in range(0, self._games, group_size):
@@ -382,12 +383,14 @@ class VectorSession:
             except queue.Empty:
                 return None
         self._busy.discard(i)
+        resetting = i in self._resetting
+        self._resetting.discard(i)
         if status == "error":
             raise RuntimeError(f"game {i}: {payload}; call reset_one({i})")
         hops = _hops((None, status, payload))
         if hops is not None and "_arrived" in hops:
             hops["h_queue"] = 1000 * (time.perf_counter() - hops.pop("_arrived"))
-        return i, payload
+        return (i, (payload, False, {"reset": True})) if resetting else (i, payload)
 
     def _send(self, i: int, message) -> None:
         worker, slot = self._where[i]
@@ -404,6 +407,14 @@ class VectorSession:
     def reset_one(self, i: int) -> dict:
         self._send(i, "reset")
         return self._take(i)[1]
+
+    def send_reset(self, i: int) -> None:
+        """Start game i's next episode (GameSession.reset: a new process when its own is due); returns at once, and
+        recv reports it as (i, observations, False, {"reset": True}), so the other games step on meanwhile."""
+        if i in self._busy:
+            raise RuntimeError(f"game {i} is already stepping; recv() its result first")
+        self._resetting.add(i)
+        self._send(i, "reset")
 
     def debug(self, i: int, op: str, **args) -> dict:
         """A staging or tuning op (GameSession.debug) on game i, between its steps; returns its result."""

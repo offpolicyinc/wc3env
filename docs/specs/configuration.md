@@ -121,6 +121,7 @@ For repeated copies: `StepPool.launch(8, speed=64, config=configs[0])`.
 | `render`, `window_mode` | Per game; [rendering constraints](../design.md#rendering-and-input) apply |
 | `setup` | Per-game [races, controllers, seed and starting locations](#offline-match-setup); opt in with `MatchSetup` |
 | `max_episodes_per_process` | Session reset policy; pools do not reset episodes or recycle healthy instances automatically |
+| `max_process_memory_mb` | Session reset policy too: a reset replaces the process once its private memory (`Game.private_bytes`: `PagefileUsage`; under Wine `RssAnon` + `VmSwap`) passes this many MB; `None` (default) no budget. `max_episodes_per_process` still applies |
 | `mode` | Every configuration must use `stepping` |
 | `step_ms` | All games agree; used when `step_all()` or `run()` omits `ms` |
 | Explicit `ms` | Overrides one call without changing configurations; validate before any game advances |

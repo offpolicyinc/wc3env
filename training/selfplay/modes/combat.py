@@ -340,7 +340,10 @@ class Combat:
         return None  # a fight has no build to follow
 
     def config(self, game, rung: str) -> dict:
-        return {}  # the learner the local player, casting only what it orders; the opponent's units on their own
+        # the learner the local player, casting only what it orders; the opponent's units on their own. A new process
+        # by memory alone, at the next reload past 450 MB private (E12): what still grows, ~0.36 MB a staged fight and
+        # ~6 MB a map reload (E15), is all an episode count stood for
+        return {"max_process_memory_mb": 450, "max_episodes_per_process": None}
 
     def episode(self, actor, game) -> Episode:
         return Fight(actor, game)

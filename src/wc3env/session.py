@@ -78,6 +78,9 @@ class GameConfig:
     computer_agents: tuple[int, ...] = ()
     setup: MatchSetup | None = None
     max_episodes_per_process: int | None = 32
+    # Also replace the process at a reset once its private memory (Game.private_bytes) passes this many MB; None: no
+    # budget. Warcraft's heap grows with each map reload (~6 MB) and staged fight, and only a new process frees it
+    max_process_memory_mb: int | None = None
     output_dir: str | Path | None = None
     # "binary": agent slots' observations are binary.BinaryObservation numpy records read from shared memory,
     # taken in the step's own round trip; computer players are not observed. Needs numpy. "json": dictionaries
@@ -127,6 +130,10 @@ class GameConfig:
             type(self.max_episodes_per_process) is not int or self.max_episodes_per_process < 1
         ):
             raise ValueError("max_episodes_per_process must be a positive integer or None")
+        if self.max_process_memory_mb is not None and (
+            type(self.max_process_memory_mb) is not int or self.max_process_memory_mb < 1
+        ):
+            raise ValueError("max_process_memory_mb must be a positive integer or None")
         if type(self.step_ms) is not int or not 25 <= self.step_ms <= 60000 or self.step_ms % 25:
             raise ValueError("step_ms must be a multiple of 25 in 25..60000")
         if self.output_dir is not None:
@@ -274,8 +281,13 @@ class GameSession:
             with self._state_lock:
                 self._check_open()
                 replay = self._game is not None and str(self._game.map).lower().endswith(".w3g")
-            limit = self.config.max_episodes_per_process
-            if replay or self._faulted or (limit is not None and self._episodes_in_process >= limit):
+            limit, budget = self.config.max_episodes_per_process, self.config.max_process_memory_mb
+            if (
+                replay
+                or self._faulted
+                or (limit is not None and self._episodes_in_process >= limit)
+                or (budget is not None and self._game is not None and self._game.private_bytes() > budget << 20)
+            ):
                 self._release_game()
             self.observations = {}
             for groups in self._groups.values():

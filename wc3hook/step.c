@@ -192,6 +192,17 @@ void step_end_after_turn(void) {
         *(DWORD *)(g_game + GAME_PENDING_MS) = 0;
 }
 
+/* The frame's local event (0x40090094) ticks the local timers ("Agile/Timer Dispatch/Queue (l)") by the frame's own
+ * dt, which step mode makes 0, so they never fired: each spell's eye candy (CEffectImage, with its sprite, model and
+ * particle emitters) ends on one, and every one stayed (~1.6 MB a staged fight, log E15). So they advance by the game
+ * time each frame ran. Local timers are the client's own: nothing synced reads them. */
+static void local_timers(DWORD ms) {
+    BYTE *game = *(BYTE **)(g_base + RVA_GAME_WAR3);
+    float dt = ms * 0.001f;
+    if (game && !*(DWORD *)(game + 0x298)) /* as the event's handler (0x1ea690) */
+        ((void(__cdecl *)(float *))(g_base + RVA_LOCAL_TIMERS))(&dt);
+}
+
 int __fastcall GameUpdate_hook(void *self, void *edx, DWORD now) {
     BYTE *t = (BYTE *)self;
     if (g_restarting) {
@@ -228,7 +239,10 @@ int __fastcall GameUpdate_hook(void *self, void *edx, DWORD now) {
         if (g_stepping)
             g_step_frames++;
     }
+    DWORD before = *(DWORD *)(t + GAME_TIME_MS);
     int r = GameUpdate_orig(self, edx, now);
+    if (g_stepmode && *(DWORD *)(t + GAME_TIME_MS) > before)
+        local_timers(*(DWORD *)(t + GAME_TIME_MS) - before);
     if (g_stepmode && g_stepping) {
         DWORD current = *(DWORD *)(t + GAME_TIME_MS);
         /* Replay EOF and a map's EndGame can tear down the simulation without a

@@ -133,10 +133,15 @@ static const char *op_kill(yyjson_val *args, JW *w) {
     NATIVE(RVA_N_KILLUNIT, N1)(u);
     return NULL;
 }
+/* The world frame's unit list holds two references on every unit made, dropped only when the map ends or the list
+ * is rebuilt from the live units (as loading a game does), so no unit was ever freed. Staging rebuilds it at the end
+ * of a step that removed units (stage_each_step). */
+static int g_removed;
 static const char *op_remove(yyjson_val *args, JW *w) {
     int u;
     NEED(arg_unit(args, &u));
     NATIVE(RVA_N_REMOVEUNIT, N1)(u);
+    g_removed = 1;
     return NULL;
 }
 /* level {unit_id, level}: SetHeroLevel without the level-up effect */
@@ -312,6 +317,12 @@ static int __cdecl invulnerable_cb(BYTE *u, void *ctx) {
     return 1;
 }
 void stage_each_step(void) { /* game thread, from step_finish */
+    if (g_removed) {
+        BYTE *game = *(BYTE **)(g_base + RVA_GAME_WAR3), *frame = game ? *(BYTE **)(game + 0x3fc) : NULL;
+        g_removed = 0;
+        if (frame)
+            ((void *(__fastcall *)(BYTE *, void *, int))(g_base + RVA_WORLD_UNITS))(frame, NULL, 1);
+    }
     if (g_invulnerable_player < 0)
         return;
     __try {

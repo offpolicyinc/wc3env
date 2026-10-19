@@ -74,6 +74,9 @@
 #define RVA_FRAME_WAIT_RET 0x3c2ede  /* return address of the frame loop's pacing wait (clock.c) */
 #define RVA_FRAME_LOOP_WAIT_RET 0x44574f /* where the frame loop's call of that wait wrapper returns; other
                                            * callers (0x575dcb) block inside game code */
+#define RVA_LOCAL_TIMERS 0x3f4820 /* cdecl(float *dt_s): the local timers' tick, from the frame's local event */
+#define RVA_GAME_WAR3 0xd3d7f8    /* the CGameWar3 singleton; its world frame (CWorldFrameWar3) at +0x3fc */
+#define RVA_WORLD_UNITS 0x20dc30  /* thiscall(world frame; rebuild) -> its unit list, first rebuilt from live units */
 /* game object (GameUpdate's this) */
 #define GAME_TIME_MS 0x2038      /* game time */
 #define GAME_PREV_NOW 0x2614     /* previous now_ms */

@@ -324,7 +324,7 @@ learner first: its share is the difference).
 ## Home 3090 Ti (2026-10-18)
 
 One box: Ryzen, 32 threads, 60 GB RAM, one RTX 3090 Ti for both the learner and inference; games under WineHQ stable
-11 + Xvfb + llvmpipe, two per prefix (`run.py --wine`). Combat mode, cb9's flags, every game against the ladder at
+11 (GE-Proton from the last row on) + Xvfb + llvmpipe, two per prefix (`run.py --wine`). Combat mode, cb9's flags, every game against the ladder at
 stage 0.85, 6 actors x 16 games (96: RAM's limit) unless said. Decided steps/s are the actors' game steps a second
 after 2 minutes' warm-up (the learner's "steps/s" is a running mean from the start: it reads ~20% low), A/B arms of 6
 minutes alternating; `runs/selfplay/*/log.txt`.
@@ -339,6 +339,8 @@ minutes alternating; `runs/selfplay/*/log.txt`.
 | + less padding (48 seats x 64 unit rows, was 64 x 96) | 1,943 / 1,880 vs 1,797 / 1,798 (+6%) | batch p50 10 -> 8-10 ms |
 | + TCP_NODELAY on the training links (`training/selfplay/transport.py`) | 2,243 / 2,243 vs 1,850 / 1,862 (+21%) | inference's gather 9 -> 2.5 ms, decisions 36 -> 25 ms; the learner now waits 0.8 s an update, not 2.4 |
 | 128 games | - | out of memory: the kernel killed the desktop's processes |
+| + the learner at 65% of the GPU's SMs (`run.py --learner-gpu-share`), 72 games | 1,953 / 2,005 vs 1,795 / 1,794 (+10%) | inference batch p90 18 -> 11 ms; the learner still waits 0.4-1.1 s an update ([rsi/log.md](rsi/log.md) E15) |
+| GE-Proton 54 games vs WineHQ stable 72 / 66, the same 44 GB (HEAD of 2026-10-19) | 2,020-2,039 vs 1,867-1,896 (+7-8%) | a game step 7.2 vs 13.2 ms; 0 failed games vs 2-5 an arm; GE costs ~0.15 GB more a game (E20) |
 
 - The GPU is the limit at 96 games: the learner trains ~1.8 s of every ~4.8 s update and waits the rest, inference
   runs ~38 batches a second of ~10 ms each, and both contend. Leaving a batch in flight while the next one's requests

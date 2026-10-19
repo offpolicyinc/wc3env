@@ -52,7 +52,8 @@ trip to `wineserver` each (his -28% CPU a step). Before this nothing gave our ga
 but WineHQ stable ignores it.
 
 **Status:** **the home default** (2026-10-19): `~/.config/wc3env/wine-env.sh` sets `WC3_WINE` (GE's `files/bin`, which
-`wine_workers` uses), `WINEFSYNC=1` and `WINEPREFIX=~/.wine-wc3-ge`. Modal's image stays on WineHQ stable (GE untested
+`wine_workers` uses), `WINEFSYNC=1` and `WINEPREFIX=~/.wine-wc3-ge`. In self-play at equal RAM it beats stable
+(+7-8%, though a game takes ~0.15 GB more: [rsi/log.md](rsi/log.md) E20). Modal's image stays on WineHQ stable (GE untested
 there; Proton 11's games died at map reloads on Modal, [8-decisions.md](8-decisions.md)). Measured 2026-10-18, `runs/bench/fsync.json`, 32 games x 10 game minutes x 2
 alternating rounds, then 3 map reloads of every game, all with the cuts:
 

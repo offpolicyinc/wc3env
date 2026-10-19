@@ -88,6 +88,9 @@ At home the limit will be the CPU that runs the games (warcraftsim: games took 1
 3. Note the numbers in [9-benchmarks.md](9-benchmarks.md) (a "home 3090 Ti" section). Modal did ~6,500 decided steps/s.
 4. The learner and inference share one GPU here (on Modal they had one each): MPS on, and the learner's `--micro 4`
    (or it runs out of memory beside inference).
+5. RAM sets the game count: under GE ~54 games (6 actors x 9) fit a 44 GB scope, ~2,000 decided steps/s on
+   2026-10-19 ([rsi/log.md](rsi/log.md) E20). An OOM-killed learner leaves its batch buffers in
+   `/dev/shm/wc3-batches-*` (3 GB): delete them.
 
 ## The old 1080 Ti machine
 

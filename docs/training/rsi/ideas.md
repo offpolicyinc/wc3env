@@ -20,8 +20,8 @@ Status: `next` (top of the queue), `open`, `running`, `E<n>` (tested, see the lo
 
 | # | Idea | Moves | Rests on | Status |
 |---|---|---|---|---|
-| T12 | Less GPU work a step: lower-precision inference, a cheaper inference step, a lighter learner update | steps/s | E8 | running |
-| T10 | Recycle a game process by its memory, not by its episode count, so long runs stay bounded | long runs, games | E2 | running |
+| T12 | Less GPU work a step: lower-precision inference, a cheaper inference step, a lighter learner update | steps/s | E8 | E14, E16 |
+| T10 | Recycle a game process by its memory, not by its episode count, so long runs stay bounded | long runs, games | E2 | E12 |
 | T11 | Fix the staging leak in the engine itself, so neither memory nor reloads grow over a run | RAM, reload time | E2 | E15 |
 | T1 | Port warcraftsim's game-code cuts into the hook (map-version memo, A* cell cache, lazy heuristic, soft-float, no JPEG decode), with a replay parity check | CPU/step | warcraftsim `shim/cuts.c` (MIT), same exe RVAs | open |
 | T4 | Games niced +10, so learner and inference get the CPU first | steps/s | warcraftsim | open |

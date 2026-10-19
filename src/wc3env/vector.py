@@ -57,18 +57,51 @@ def local_workers(worker: int) -> tuple[list[str], dict | None]:
     return [sys.executable, "-m", "wc3env.vector"], None
 
 
-def wine_workers(prefix: str | None = None, python: str = r"C:\Python311\python.exe") -> Launch:
+def wine_workers(
+    prefix: str | None = None,
+    python: str = r"C:\Python311\python.exe",
+    nice: int = 0,
+) -> Launch:
     """Workers as Windows Python under Wine, from a Linux host: worker 0 in `prefix` ($WINEPREFIX), the
-    others in copies of it in the temporary directory, each with its own wineserver."""
+    others in copies of it in the temporary directory, each with its own wineserver. The Wine is $WC3_WINE's bin
+    folder if set (at home GE-Proton's, with fsync: docs/training/home-setup.md), else the one on PATH.
+    nice: the games' niceness, so the learner and inference get the CPU first."""
     base = Path(prefix or os.environ["WINEPREFIX"])
+    env = wine_env(os.environ.get("WC3_WINE"))
 
     def launch(worker: int) -> tuple[list[str], dict | None]:
-        path = base if worker == 0 else Path(tempfile.gettempdir()) / f"wine-prefix-{worker}"
+        path = base if worker == 0 else Path(tempfile.gettempdir()) / f"wine-prefix-{base.name}-{worker}"
         if not path.exists():
             link_prefix(base, path)
-        return ["wine", python, "-m", "wc3env.vector"], {**os.environ, "WINEPREFIX": str(path)}
+        return [*(["nice", "-n", str(nice)] if nice else []), "wine", python, "-m", "wc3env.vector"], {
+            **env,
+            "WINEPREFIX": str(path),
+        }
 
     return launch
+
+
+def wine_env(wine: str | None = None) -> dict[str, str]:
+    """This process's environment for running `wine` from the bin folder `wine` (None: the one on PATH). A Proton
+    build (GE-Proton's `files/bin`) also needs what Proton's own launcher sets: its libraries, and vkd3d for wined3d."""
+    env = dict(os.environ)
+    if not wine:
+        return env
+    bin_dir = Path(wine).expanduser().resolve()
+    env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+    env.pop("WINEARCH", None)  # the prefix already exists; "wow64" (WineHQ 11's) is not a value Proton's Wine 10 knows
+    # Wine's audio drivers off (the games are silent): with them, Proton's game hangs before its first frame in the
+    # MP3 codec's setup (winegstreamer); turning them off changes nothing under WineHQ stable (docs/training/warcraftsim.md)
+    overrides = env.get("WINEDLLOVERRIDES", "mscoree,mshtml=")
+    env["WINEDLLOVERRIDES"] = f"{overrides};winealsa.drv,winepulse.drv,wineoss.drv=d"
+    lib = bin_dir.parent / "lib"
+    if (lib / "vkd3d").is_dir():
+        env["WINEDLLPATH"] = f"{lib / 'vkd3d'}{os.pathsep}{lib / 'wine'}"
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(
+            [str(lib / "x86_64-linux-gnu"), str(lib / "i386-linux-gnu")]
+            + ([env["LD_LIBRARY_PATH"]] if env.get("LD_LIBRARY_PATH") else [])
+        )
+    return env
 
 
 def link_prefix(base: Path, path: Path, small: int = 256 * 1024) -> None:

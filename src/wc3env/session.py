@@ -69,6 +69,8 @@ class GameConfig:
     step_ms: int = 1000
     window_mode: str = "background"
     render: bool = True
+    # wc3hook's equivalent faster game code (wc3hook/cuts.c, WC3HOOK_CUTS bits); 0: none
+    game_cuts: int = 0
     sound: bool | None = None  # None uses WC3_SOUND (on unless configured otherwise)
     background_visible: bool = False  # show the input-isolated background window
     ai_difficulty: int | None = None  # 0 easy, 1 normal, 2 insane for computer players; None keeps the map's
@@ -110,6 +112,8 @@ class GameConfig:
             raise ValueError("window_mode must be interactive or background")
         if type(self.render) is not bool:
             raise ValueError("render must be a bool")
+        if type(self.game_cuts) is not int or self.game_cuts < 0:
+            raise ValueError("game_cuts must be a non-negative int")
         if self.sound is not None and type(self.sound) is not bool:
             raise ValueError("sound must be a bool or None")
         if type(self.background_visible) is not bool or (self.background_visible and self.window_mode != "background"):
@@ -170,6 +174,7 @@ def _launch(config: GameConfig):
         agents=config.agent_slots,
         window_mode=config.window_mode,
         render=config.render,
+        game_cuts=config.game_cuts,
         sound=config.sound,
         background_visible=config.background_visible,
         ai_difficulty=config.ai_difficulty,

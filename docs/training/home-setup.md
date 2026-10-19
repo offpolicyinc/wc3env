@@ -44,19 +44,22 @@ recipe that already works is the worker image: [docker/Dockerfile](../../docker/
 
 1. NVIDIA driver + CUDA-enabled torch in a Linux Python 3.11+ venv (`torch` cu128 wheel; `numpy zstandard wandb
    wandb-workspaces`; `pip install -e .[remote]`).
-2. Wine with 32-bit support (the image uses WineHQ stable 11; warcraftsim found GE-Proton's Wine with fsync ~28%
-   cheaper per step: worth measuring), `WINEARCH=wow64`, a prefix (`wineboot -u`), Windows Python 3.11 installed
-   in it at `C:\Python311` with this repo's `wc3env` (+ numpy, zstandard), and the game folder linked as
-   `drive_c/wc3`. A virtual display (Xvfb, as `docker/with-display.sh`) unless the desktop's is used.
+2. Wine: GE-Proton 10-34 (16-17% less CPU a game-step than the image's WineHQ stable, identical games), unpacked
+   under `~/wc3/ge/`, with 32-bit GL (`libgl1:i386 libglx0:i386`). `WC3_WINE` = its `files/bin` and `WINEFSYNC=1`
+   (wine_workers adds what Proton's launcher sets for the games). A prefix GE's Wine made (`~/.wine-wc3-ge`),
+   Windows Python 3.11 in it at `C:\Python311` with numpy 1.26 (not 2: GE lacks `crealf`) and this repo's `wc3env`
+   (+ zstandard), and the game folder linked as `drive_c/wc3`. All of it is in `~/.config/wc3env/wine-env.sh`;
+   details in [warcraftsim.md](warcraftsim.md). A virtual display (Xvfb, as `docker/with-display.sh`) unless the desktop's is used.
 3. The hook from the stick into `src/wc3env/native/`, the maps into the game's `Maps/FrozenThrone/` and `build/maps/`.
 4. `.env` from `.env.example`: `WC3_GAME_DIR` as Wine sees it. W&B: `wandb login` (project off-policy-inc/wc3).
    **Never print `.env`**: it holds API keys.
 5. Check the environment alone first: `python -m wc3env.vector --wine ...` (see its `--help`) or `docker/smoke.py`'s steps.
 
-**A gap to close first:** the actors (`training/selfplay/actor.py`) launch games with `local_workers` (Windows
-Python, no Wine), `remote_workers` or `dial_workers` (Modal's sandboxes). Nothing passes `wine_workers()`
-(`src/wc3env/vector.py`, a Wine prefix per group of games) yet; add an actor flag for it, as `wc3env.vector`'s own
-`--wine` does. Two games per prefix measured best ([docker/README.md](../../docker/README.md)).
+The actors run their games under Wine with `run.py --wine` (`wine_workers()`, a prefix per two games; each actor its
+own prefixes). The learner and inference share the GPU through NVIDIA MPS: a user service running
+`nvidia-cuda-mps-control -d` with its pipe in `/tmp/nvidia-mps`, so every CUDA process uses it (+11% decided
+steps/s, [9-benchmarks.md](9-benchmarks.md#home-3090-ti-2026-10-18)). Under it the learner gets 65% of the GPU's SMs
+(`run.py --learner-gpu-share`), so inference's batches are not stuck behind its kernels (+10%, rsi/log.md E15).
 
 torch.compile works on Linux (Triton ships with torch), as on Modal.
 
@@ -83,8 +86,8 @@ At home the limit will be the CPU that runs the games (warcraftsim: games took 1
 2. Raise games until the CPU is ~90% busy or steps/s stops rising; then actors (warcraftsim gained 13% from more
    actor processes with fewer games each: one Python GIL per actor).
 3. Note the numbers in [9-benchmarks.md](9-benchmarks.md) (a "home 3090 Ti" section). Modal did ~6,500 decided steps/s.
-4. The learner and inference share one GPU here (on Modal they had one each); if updates slow down, see
-   warcraftsim's notes on the CUDA driver's lock and pinned memory.
+4. The learner and inference share one GPU here (on Modal they had one each): MPS on, and the learner's `--micro 4`
+   (or it runs out of memory beside inference).
 
 ## The old 1080 Ti machine
 

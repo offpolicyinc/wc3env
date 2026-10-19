@@ -12,11 +12,24 @@ Payloads are compressed (zlib): chunks carry mostly zeros and repeated tree grid
 from __future__ import annotations
 
 import pickle
+import socket
 import threading
 import time
 import zlib
 from multiprocessing.connection import Client as _Client
 from multiprocessing.connection import Listener, answer_challenge, deliver_challenge
+
+
+def _nodelay(connection) -> None:
+    """TCP_NODELAY on a connection's socket. send_bytes writes a message's length and its body separately (above 16 KB),
+    and Nagle's algorithm then holds the body until the length's ACK, which the reader delays up to ~40 ms: 5% of the
+    inference process's reads took that long, 88% of its reading time. With it, ~1,860 -> ~2,240 decided steps/s at
+    96 games on one machine (2026-10-19)."""
+    with socket.socket(fileno=connection.fileno()) as s:
+        try:
+            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        finally:
+            s.detach()  # the connection keeps its socket
 
 
 def _pack(value, compress: bool = True) -> bytes:
@@ -70,6 +83,7 @@ class Connections:
         except Exception:  # noqa: BLE001  a wrong key, a probe, a client gone
             connection.close()
             return
+        _nodelay(connection)
         self.arrived(connection)
 
     def arrived(self, connection) -> None:
@@ -118,6 +132,7 @@ class Client:
         while True:
             try:
                 self.connection = _Client(address, authkey=authkey)
+                _nodelay(self.connection)
                 break
             except (ConnectionRefusedError, OSError):
                 if time.time() > deadline:

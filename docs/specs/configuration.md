@@ -119,6 +119,7 @@ For repeated copies: `StepPool.launch(8, speed=64, config=configs[0])`.
 |---|---|
 | `map`, `players` | Resolve each map before launch; forward its agent slots to launch and its complete player list to `create_game` |
 | `render`, `window_mode` | Per game; [rendering constraints](../design.md#rendering-and-input) apply |
+| `game_cuts` | Per game: `wc3hook/cuts.c`'s bits (`WC3HOOK_CUTS`), faster game code with the same results; 0 (default) none |
 | `setup` | Per-game [races, controllers, seed and starting locations](#offline-match-setup); opt in with `MatchSetup` |
 | `max_episodes_per_process` | Session reset policy; pools do not reset episodes or recycle healthy instances automatically |
 | `max_process_memory_mb` | Session reset policy too: a reset replaces the process once its private memory (`Game.private_bytes`: `PagefileUsage`; under Wine `RssAnon` + `VmSwap`) passes this many MB; `None` (default) no budget. `max_episodes_per_process` still applies |

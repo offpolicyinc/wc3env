@@ -59,6 +59,7 @@ static DWORD WINAPI main_thread(LPVOID arg) {
         act_init_hooks();
         events_init_hooks();
         result_init_hooks();
+        cuts_init_hooks();
         CreateThread(NULL, 0, heartbeat_thread, NULL, 0, NULL);
         require_hook(MH_EnableHook(MH_ALL_HOOKS), "enable hooks");
     }

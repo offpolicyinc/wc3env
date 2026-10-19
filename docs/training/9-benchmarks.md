@@ -321,6 +321,37 @@ learner first: its share is the difference).
   thread since ef188cd; loading them still stops the batches ~65 ms, every ~5 s. Policy lag stayed ~6.5: a chunk
   is 64 steps, ~10.5 s of play (~4 updates) from its first step's version.
 
+## Home 3090 Ti (2026-10-18)
+
+One box: Ryzen, 32 threads, 60 GB RAM, one RTX 3090 Ti for both the learner and inference; games under WineHQ stable
+11 + Xvfb + llvmpipe, two per prefix (`run.py --wine`). Combat mode, cb9's flags, every game against the ladder at
+stage 0.85, 6 actors x 16 games (96: RAM's limit) unless said. Decided steps/s are the actors' game steps a second
+after 2 minutes' warm-up (the learner's "steps/s" is a running mean from the start: it reads ~20% low), A/B arms of 6
+minutes alternating; `runs/selfplay/*/log.txt`.
+
+| Setup | Decided steps/s | Notes |
+|---|---|---|
+| 32 games, no model (`docker/vector_rollout.py`) | 4,583 | CPU: 28 of 32 threads |
+| 16 games (2 x 8) | ~420 | too few games |
+| 96 games | 1,577 / 1,574 | decisions ~40 ms of a ~58 ms step, game steps ~11 ms; GPU 99%, RAM 47.5 GB |
+| + NVIDIA MPS (learner and inference kernels side by side) | 1,743 / 1,747 (+11%) | inference batch p90 30 -> 20 ms |
+| + game-code cuts (`--game-cuts 1225`) | ~1,790 | with MPS, `--update-pause-ms` and nice made no difference (robinkahlow's A/B) |
+| + less padding (48 seats x 64 unit rows, was 64 x 96) | 1,943 / 1,880 vs 1,797 / 1,798 (+6%) | batch p50 10 -> 8-10 ms |
+| + TCP_NODELAY on the training links (`training/selfplay/transport.py`) | 2,243 / 2,243 vs 1,850 / 1,862 (+21%) | inference's gather 9 -> 2.5 ms, decisions 36 -> 25 ms; the learner now waits 0.8 s an update, not 2.4 |
+| 128 games | - | out of memory: the kernel killed the desktop's processes |
+
+- The GPU is the limit at 96 games: the learner trains ~1.8 s of every ~4.8 s update and waits the rest, inference
+  runs ~38 batches a second of ~10 ms each, and both contend. Leaving a batch in flight while the next one's requests
+  are read (pipelined inference) was slower (~1,400-1,450): each batch then finished ~28 ms after launch, not ~11.
+  Reading a request is cheap (p50 0.1 ms, 70 KB), but 5% of reads waited ~40 ms on Nagle's algorithm and delayed ACKs
+  (send_bytes writes the length and the body apart): 88% of the reading time, until TCP_NODELAY.
+- RAM sets the game count: ~0.4 GB a Warcraft process (LOW_VIDEO set in the prefix; 0.36 before) and growing with
+  every staged fight until the process recycles, ~17 GB the training processes. Run inside
+  `systemd-run --user --scope -p MemoryMax=50G` so an OOM kills only the run.
+- One GPU for both needs the learner's `--micro 4` and `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` (otherwise
+  learner 10 GB + inference 12.7 GB ran out).
+- cb9 won 0.66-0.79 of these games at 0.85 (Modal: ~0.58-0.67 over its run).
+
 ## Cost
 
 - **Estimate for a 512-game run now: ~$25/h, ~$0.95 per million steps** (no bill yet for this layout): sandbox CPU

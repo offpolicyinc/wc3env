@@ -208,11 +208,12 @@ def _map_key(static: Static) -> tuple:
     return (tuple(static.races), tuple(static.bounds))
 
 
-# a batch's seats and unit rows, padded: few sizes, since each is a graph to make (0.6-3 s; compiled, 20-40 s) and
-# padding is cheap (58 seats 4.6 ms, 8 seats 2.7: training/bench/profile_run.py). sp21's batches: ~53 seats, 98% at
-# 96 unit rows.
-SEAT_SIZES = (64, 128, 256, 512, 1024)
-UNIT_ROWS = tuple(r for r in ROW_SIZES if r >= 96)
+# a batch's seats and unit rows, padded: few sizes, since each is a graph to make (0.6-3 s; compiled, 20-40 s), and
+# padding is cheap on an H100 (58 seats 4.6 ms, 8 seats 2.7: training/bench/profile_run.py). sp21's batches: ~53
+# seats, 98% at 96 unit rows. On one 3090 Ti shared with the learner it is not: combat's batches (~37 seats, at most
+# 45 units) at 48 x 64 instead of 64 x 96 took ~6% more decided steps a second (docs/training/rsi/log.md).
+SEAT_SIZES = (32, 48, 64, 128, 256, 512, 1024)
+UNIT_ROWS = tuple(r for r in ROW_SIZES if r >= 64)
 KEYS_A_SEAT = 64  # actor masks a seat has room for at least (more: the next power of two)
 TABLES = ("type", "argument", "actor_keys", "actor_rows")
 

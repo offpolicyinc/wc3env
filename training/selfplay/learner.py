@@ -518,6 +518,9 @@ class Learner:
                     stats["value_loss"] += value_loss.detach() * share / steps
                 stats["grad_norm"] += torch.nn.utils.clip_grad_norm_(self.model.parameters(), a.clip_grad) / steps
                 self.opt.step()
+                if a.update_pause_ms and cuda:  # the GPU to the inference process alone for a moment (one GPU for both)
+                    torch.cuda.synchronize(self.device)
+                    time.sleep(a.update_pause_ms / 1000)
         if before is not None:  # update_kl: how far this update moved the policy, KL(before || after) on the first
             # piece's steps (Schulman's k3: (r - 1) - log r, r = after / before, on actions the actors drew from about
             # `before`). The adaptive schedules aim at ~0.01 a step (rsl_rl, rl_games); kl is the drift from --init
@@ -827,6 +830,9 @@ def parser() -> argparse.ArgumentParser:
                    help="GAE from the values the actors recorded (no value pass of the learner's own)")
     p.add_argument("--epochs", type=int, default=1, help="passes over each batch: 1 lets the one L4 take in twice the new games (it was the limit at 2)")
     p.add_argument("--minibatch", type=int, default=32, help="chunks per gradient step")
+    p.add_argument("--update-pause-ms", type=float, default=0, help="after each gradient step, wait for the GPU and then "
+                   "this long, so the inference process's batches are not stuck behind the update (learner and inference "
+                   "on one GPU; warcraftsim: 8 ms took its rounds during an update 39 -> 6 ms)")
     p.add_argument("--micro", type=int, default=0, help="chunks through the GPU at once, gradients added up to a "
                    "minibatch (0: the whole minibatch; an L4's 24 GB needs 4: 8 ran out once games grew)")
     p.add_argument("--lr", type=float, default=4e-5, help="cb8-cb9's (2e-5 until then, VPT's)")

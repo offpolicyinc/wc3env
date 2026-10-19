@@ -10,11 +10,7 @@ Moved here from [ideas.md](ideas.md) on 2026-10-18; ideas.md keeps what improves
 |---|---|---|---|---|---|
 | M1 | Positions in the time attention (rotary); today it sees the last <=64 steps as a set | wins | cloning loss | Su 2021 (RoPE) | open |
 | M2 | Larger model (~50M, bf16; the GPU's math is mostly idle) | cloning loss, wins | cloning loss vs bc10's first | Kaplan 2020; Hilton 2023 (RL scaling) | open |
-| M3 | Deeper network grown from the current one (new layers start as identity) | wins | none needed: starts as the old network | warcraftsim (3 -> 5 layers helped, 8 level); Net2Net (Chen 2016) | open |
 | R1 | Moves relative to a unit (anchor x direction x distance); cb9 moves on ~0.2% of steps | move share, wins | share of pro moves it can express | [curriculum.md](../todo/curriculum.md) | open |
 | R2 | Ids by what they are: frozen text vectors + base numbers + a learned residual from zero | rare-id learning | nearest neighbours of the text vectors | [representation.md](../todo/representation.md); RTFM (Zhong 2020); EMMA (Hanjie 2021) | open |
 | R3 | Abilities and items as tokens; the argument head as a pointer | cast share, wins | held-out hero or item in cloning | [representation.md](../todo/representation.md); Pointer Networks (Vinyals 2015) | open |
 | X1 | Brood War through Pluto, then WC3: text-aligned ids across games | WC3 start | Pluto's terms; pluto-re's outputs | [cross-game.md](../todo/cross-game.md); MAGENTA (Wang 2024) | blocked: R2, R3 |
-
-M3 is the exception: grown layers start as identity, so it loads the current weights and can be tested on its own
-without a retrain.

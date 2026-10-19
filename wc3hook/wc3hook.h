@@ -205,6 +205,10 @@ void step_end_after_turn(void);
 void step_restart(void);
 extern const char *g_step_reason;
 void step_init_hooks(void);
+/* cuts.c: WC3HOOK_CUTS, equivalent faster game code */
+int cuts_flags(void);
+long cuts_paint_every(void);
+void cuts_init_hooks(void);
 extern volatile LONG g_frames_seen;
 
 #include "obsbin.h"

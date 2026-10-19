@@ -4,6 +4,7 @@
 
 ```powershell
 wc3hook/build.bat                                # x86 hook + native tests; needs MSVC Build Tools
+                                                 # (Linux: wc3hook/build.sh, the same MSVC through msvc-wine)
 python -m pip install -e . -e wc3agent
 python -m unittest tests.test_w3g                # the replay reader on recorded games; CI runs it
 python -m ruff check . && python -m ruff format .   # CI enforces both

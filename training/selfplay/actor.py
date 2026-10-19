@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from wc3env.session import GameConfig, MatchSetup, PlayerConfig
-from wc3env.vector import VectorSession, dial_workers, local_workers, remote_workers
+from wc3env.vector import VectorSession, dial_workers, local_workers, remote_workers, wine_workers
 
 from ..policy.agent import Agents, Decision, Seat
 from ..policy.features import STEP_MS, Static, env_race
@@ -269,6 +269,7 @@ class Actor:
                 **self.mode.config(g, self.rung),
                 setup=MatchSetup(seed=int(self.rng.integers(2**31 - 1)), randomize_starts=True),
                 render=False,
+                game_cuts=self.args.game_cuts,
                 sound=False,
                 step_ms=STEP_MS,
                 observation="binary",
@@ -576,6 +577,11 @@ def parser() -> argparse.ArgumentParser:
                    "machine (python -m wc3env.vector --connect host:port --workers games/group)")
     p.add_argument("--dial", default="", help="host:port where another machine's games' workers listen (python -m "
                    "wc3env.vector --listen port --workers games/group): one connection out to it a worker")
+    p.add_argument("--wine", action="store_true", help="the games' workers as Windows Python under Wine, here "
+                   "(a Linux host; $WINEPREFIX, a copy of it per worker)")
+    p.add_argument("--game-cuts", type=int, default=1225, help="wc3hook's equivalent faster game code (wc3hook/cuts.c "
+                   "bits; 1225: 4.6%% less CPU a game-step, every step identical: docs/training/warcraftsim.md); 0: none")
+    p.add_argument("--nice", type=int, default=0, help="with --wine: the games' niceness (the learner and inference first)")
     p.add_argument("--inference", required=True, help="host:port of the inference process deciding for this actor "
                    "(training/selfplay/inference.py)")
     p.add_argument("--seed", type=int, default=0)
@@ -598,13 +604,21 @@ def _watchdog(learner: str, every: float = 60, misses: int = 3) -> None:
     os._exit(0)
 
 
+def _wine(args: argparse.Namespace):
+    """wine_workers, numbered past the other actors' workers: each worker its own prefix and wineserver, none shared
+    with another actor's games (actor 0's first worker in $WINEPREFIX itself)."""
+    wine, first = wine_workers(nice=args.nice), args.seed * -(-args.games // args.group)
+    return lambda worker: wine(first + worker)
+
+
 def main() -> None:
     """An actor that keeps going: after a failure outside a game (a launch that timed out on a busy machine,
     say) it reports it and starts a new set of games, up to MAX_RESTARTS times."""
     args = parser().parse_args()
     actor = Actor(args)  # waits for the learner (up to 30 minutes) before the watchdog starts counting
     # the games run here, or elsewhere (python -m wc3env.vector --listen / --connect): one listener, kept across restarts
-    launch = dial_workers(args.dial) if args.dial else remote_workers(args.remote) if args.remote else local_workers
+    launch = dial_workers(args.dial) if args.dial else remote_workers(args.remote) if args.remote else \
+        _wine(args) if args.wine else local_workers
     threading.Thread(target=_watchdog, args=(args.learner,), daemon=True).start()
     for attempt in range(MAX_RESTARTS + 1):
         try:

@@ -108,6 +108,7 @@ const char *step_request(DWORD ms) {
  * releases it (realtime). The hold has no stall guard: the map may still be loading. */
 #define HOLD_AT_MS 1000
 volatile LONG g_held; /* 1 once the game sits at HOLD_AT_MS */
+static LONG g_steps_done, g_painted_at; /* steps finished, and the step of the last paint (cuts bit 256) */
 static int g_holding;
 static int g_end_requested;
 static int g_restarting;
@@ -170,6 +171,7 @@ static void step_finish(BYTE *t, const char *why) {
     STEPLOG("finish gametime %lu frames %ld", gt, g_step_frames);
     if (g_steplog > 0 && !g_holding)
         InterlockedDecrement(&g_steplog);
+    g_steps_done++;
     if (g_holding) {
         cleanup_game_observers(t);
         setup_hold();
@@ -338,6 +340,11 @@ static LONGLONG g_last_present;
 static int __cdecl Paint_hook(void) {
     if (g_render || !g_held)
         return Paint_orig();
+    /* cuts bit 256: paint now and then, so the world frame's unit list the fog pass walks is rebuilt (cuts.c) */
+    if ((cuts_flags() & 256) && g_steps_done - g_painted_at >= cuts_paint_every()) {
+        g_painted_at = g_steps_done;
+        return Paint_orig();
+    }
     LONGLONG now = real_qpc();
     if (now - g_last_present < g_qpc_freq / 30) {
         frame_seen();

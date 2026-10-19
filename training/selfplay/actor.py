@@ -465,7 +465,7 @@ class Actor:
                 if len(rec):
                     self._ship(game, slot, rec.chunk(bootstrap=0.0))
                 self._flush(game, slot)
-            if step.reload:  # the map loaded again (a game at its time limit; every fight),
+            if step.reload:  # the map loaded again (a game at its time limit; a fights' game whose clock is long),
                 # without waiting: a new process takes 2-3 s and the other games step on (a failure comes back
                 # through recv, and _lost starts the game again)
                 session.send_reset(i)

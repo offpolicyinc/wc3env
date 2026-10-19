@@ -14,7 +14,7 @@ Status: `next` (top of the queue), `open`, `running`, `E<n>` (tested, see the lo
 |---|---|---|---|---|
 | B1 | Home throughput baseline: 4 actors x 8 games, combat mode, `--wine`; steps/s, CPU busy, actors' `ms:` split | steps/s | [home-setup.md](../home-setup.md#sizing-the-run-the-first-job) | E1 |
 | B2 | Size the home run: more games until the CPU is ~90% busy or steps/s stops rising, then more actors with fewer games each | steps/s | warcraftsim (+13% from more actors) | E1 |
-| B3 | Fixed evaluation: cb9 at stage 0.85, N fights on held-out seeds; its interval width sets N for every later verdict | eval | [combat.md](../combat.md) | open |
+| B3 | Fixed evaluation: cb9 at stage 0.85, N fights on held-out seeds; its interval width sets N for every later verdict | eval | [combat.md](../combat.md) | E18 |
 
 ## 1. Throughput
 

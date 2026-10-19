@@ -62,7 +62,7 @@ def main() -> None:
         for fight in range(a.fights):
             draw = rng.bit_generator.state
             for i in range(n):  # every game the same fight
-                if fight:  # every fight on a freshly loaded map, as training's
+                if obs[i][0].game_time_seconds > combat.RESET_MINUTES * 60:  # the map loaded again, as training does
                     obs[i] = games.reset_one(i)
                 rng.bit_generator.state = draw
                 ops = combat.stage_ops(obs[i], rng, a.handicap or None)

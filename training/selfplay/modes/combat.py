@@ -4,10 +4,10 @@ RL loop in minutes instead of hours (docs/training/combat.md).
 Each fight draws a new army: three of the four Orc heroes, each at a random level with a random legal skill build and
 random items, and a food budget filled with random unit types. Both players get the same one, placed as each other's
 mirror image about a random point of the open arena, facing along a random direction. The town halls stay (Warcraft
-ends a melee game for a player with no buildings); the melee start's workers are removed; both players own
-every Orc upgrade and have no resources. Every fight begins on a freshly loaded map, so its clock (one of the model's
-inputs) starts where a whole game's does; it is staged in the game's worker with the step that starts it
-(VectorSession.stage).
+ends a melee game for a player with no buildings); every other unit of the last fight is removed; both players own
+every Orc upgrade and have no resources. Fights follow each other in a game, staged in its worker with the step that
+starts each (VectorSession.stage); the map is loaded again once the game's clock passes RESET_MINUTES (a fresh map
+every fight cost 26% of steps/s: docs/training/rsi/log.md E19).
 
 The learner is player 0, the local player, whose units cast only what it orders; the opponent is player 1, a computer
 slot without an AI (wc3env loads every agent slot but the local player's so), whose units cast their spells on their
@@ -65,6 +65,7 @@ MAP = "Maps/FrozenThrone/(2)FlatArena.w3x"  # under the game's folder (training/
 DECIDED = 0.3  # a side whose army value falls below this share of the other's (for HOLD_SECONDS) has lost
 HOLD_SECONDS = 2.0
 SECONDS = 150.0  # game seconds a fight may last (with heroes, 90 cut off 14 of 40 Warcraft-vs-Warcraft fights; decided ones took 32-88)
+RESET_MINUTES = 10.0  # a game is loaded again once its clock passes this (fights run one after another in a game)
 ORDER_SECONDS = 3.0  # how often the scripted side is re-aimed
 FOOD = (8, 40)  # an army's food besides its heroes, drawn uniformly (a Grunt is 3, a Tauren 5)
 HEROES = ("Obla", "Ofar", "Otch", "Oshd")  # an army has three of them, each once
@@ -387,4 +388,4 @@ class Fight(Episode):
             rewards[slot] = r
         outcome = "time limit" if too_long else "draw" if winner is None else "victory" if winner == self.game.slot else "defeat"
         return Step(rewards, done or too_long or winner is not None, outcome, (now - self.began) / 60,
-                    reload=not done)  # fmt: skip
+                    reload=not done and now > RESET_MINUTES * 60)  # fmt: skip

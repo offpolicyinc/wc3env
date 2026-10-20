@@ -178,8 +178,8 @@
 <header class="wrap">
   <p class="date">Peter Wang and Nico Christie · September 25, 2026</p>
   <h1>Warcraft III as an RL environment</h1>
-  <p class="meta-links"><a href="https://github.com/pwang724/wc3env">Code on GitHub</a></p>
-  <p>StarCraft has received a lot of research love over the past decade (<a href="https://github.com/Blizzard/s2client-proto">s2client-proto</a>, <a href="https://github.com/google-deepmind/pysc2">PySC2</a> and <a href="https://deepmind.google/discover/blog/alphastar-mastering-the-real-time-strategy-game-starcraft-ii/">AlphaStar</a>, to name a few), but Warcraft III, the game that filled my childhood with magic and wonder, has been rendered frozen in Northrend. So Nico and I present <a href="https://github.com/pwang724/wc3env">wc3env</a>, an open-source gym environment for Warcraft III: The Frozen Throne.</p>
+  <p class="meta-links"><a href="https://github.com/offpolicyinc/wc3env">Code on GitHub</a></p>
+  <p>StarCraft has received a lot of research love over the past decade (<a href="https://github.com/Blizzard/s2client-proto">s2client-proto</a>, <a href="https://github.com/google-deepmind/pysc2">PySC2</a> and <a href="https://deepmind.google/discover/blog/alphastar-mastering-the-real-time-strategy-game-starcraft-ii/">AlphaStar</a>, to name a few), but Warcraft III, the game that filled my childhood with magic and wonder, has been rendered frozen in Northrend. So Nico and I present <a href="https://github.com/offpolicyinc/wc3env">wc3env</a>, an open-source gym environment for Warcraft III: The Frozen Throne.</p>
   <p>With the release of <a href="https://docs.typesafe.ai/">Jev</a>, I also spent the last three days asking how well a frontier language model (<a href="https://www.anthropic.com/claude/opus">Opus 5.5</a>), when paired with a fast, smart-ish zero-shot classifier (Jev), can play a real-time strategy game. While Jev is surprisingly good at isolated fights, Opus+Jev fail in free-form 1v1 matches. I'll go through why below.</p>
 </header>
 
@@ -240,7 +240,7 @@
       <tr><td>Official</td><td>No: an injected DLL, offline only</td><td>Yes: Blizzard and DeepMind</td></tr>
     </tbody>
   </table>
-  <p class="muted small">Limit: you need your own licensed copy of the game. The repository contains no game files, and it is offline only. Both columns were measured on the same laptop (Intel Core Ultra 5 325, 8 cores, 16 GB) with the same test: an idle agent against the hardest non-cheating built-in AI (Warcraft III insane on Echo Isles, StarCraft II very hard on Simple96), rendering off, one-second steps, five game minutes, raw observations only. StarCraft II ran through PySC2 4.0 on game version 5.0.16. More in the <a href="https://github.com/pwang724/wc3env/blob/main/docs/architecture.md">architecture notes</a>.</p>
+  <p class="muted small">Limit: you need your own licensed copy of the game. The repository contains no game files, and it is offline only. Both columns were measured on the same laptop (Intel Core Ultra 5 325, 8 cores, 16 GB) with the same test: an idle agent against the hardest non-cheating built-in AI (Warcraft III insane on Echo Isles, StarCraft II very hard on Simple96), rendering off, one-second steps, five game minutes, raw observations only. StarCraft II ran through PySC2 4.0 on game version 5.0.16. More in the <a href="https://github.com/offpolicyinc/wc3env/blob/main/docs/architecture.md">architecture notes</a>.</p>
 </section>
 
 <!-- ============ PART 2 ============ -->

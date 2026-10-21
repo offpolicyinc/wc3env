@@ -217,8 +217,10 @@ def _map_key(static: Static) -> tuple:
 # padding is cheap on an H100 (58 seats 4.6 ms, 8 seats 2.7: training/bench/profile_run.py). sp21's batches: ~53
 # seats, 98% at 96 unit rows. On one 3090 Ti shared with the learner it is not: combat's batches (~37 seats, at most
 # 45 units) at 48 x 64 instead of 64 x 96 took ~6% more decided steps a second (docs/training/rsi/log.md).
-SEAT_SIZES = (32, 48, 64, 128, 256, 512, 1024)
-UNIT_ROWS = tuple(r for r in ROW_SIZES if r >= 64)
+# Finer still for combat at home (~25 seats, ~23 units, 94% of batches at most 48): seats by 8-16 to 64 and 48 unit
+# rows, the step 6.0 -> 5.4 ms, 2.6% more decided steps a second (rsi E35); those up to 64 x 64 made at the start.
+SEAT_SIZES = (16, 24, 32, 40, 48, 64, 128, 256, 512, 1024)
+UNIT_ROWS = (48, *(r for r in ROW_SIZES if r >= 64))
 KEYS_A_SEAT = 64  # actor masks a seat has room for at least (more: the next power of two)
 TABLES = ("type", "argument", "actor_keys", "actor_rows")
 
@@ -340,7 +342,7 @@ class Model:
         unit_rows = next(r for r in UNIT_ROWS if r >= max(1, x["features"]["units"].shape[1]))
         per_seat = max(KEYS_A_SEAT, 1 << (-(-actor_keys(x["tables"]) // seats) - 1).bit_length())
         if self.compiled and not self.graphs:  # every common shape now, from this batch's inputs' layout
-            for s_, r_ in itertools.product(SEAT_SIZES[:4], UNIT_ROWS):
+            for s_, r_ in itertools.product([s for s in SEAT_SIZES if s <= 64], [r for r in UNIT_ROWS if r <= 64]):
                 capturing = time.perf_counter()
                 self.graphs[(s_, r_, KEYS_A_SEAT)] = _Step(self, x, s_, r_, KEYS_A_SEAT)
                 self.timing["captures"].append(1000 * (time.perf_counter() - capturing))

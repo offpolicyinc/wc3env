@@ -290,16 +290,23 @@ def value(obs, mana: dict | None = None) -> float:
     return float((worth * np.sqrt(np.clip(u["hp"] / np.maximum(u["max_hp"], 1), 0, 1))).sum())
 
 
+def base_ops(observations: dict) -> list:
+    """The ops every fight starts with: the last fight's units removed, the last one's handicap off (it outlasts the
+    fight: a scenario's after a ladder fight at 0.9 had it until E42), both players' upgrades, no resources."""
+    gone = {int(i) for obs in observations.values() for i in _fighters(obs)["unit_id"]}
+    ops = [("remove", {"unit_id": i}) for i in sorted(gone)] + [("handicap", {"player": 1, "hp": 1.0})]  # any: off
+    for player in (0, 1):
+        ops.append(("resources", {"player": player, "gold": 0, "lumber": 0}))
+        ops += [("research", {"player": player, "type_id": t, "level": n}) for t, n in _upgrades()]
+    return ops
+
+
 def stage_ops(observations: dict, rng: np.random.Generator, handicap: float | None, scripted: int = 1) -> list:
     """The debug ops staging the next fight in this game (wc3env.vector's VectorSession.stage): the last fight's units
     (and the melee start's workers) removed, the upgrades, no resources, both armies (heroes at their level with their
     skills learned, every unit at full mana), and the scripted side's (slot `scripted`) stage (HANDICAPS; None: no
     scripted side): below 1 its handicap, past 1 its reinforcements."""
-    gone = {int(i) for obs in observations.values() for i in _fighters(obs)["unit_id"]}
-    ops = [("remove", {"unit_id": i}) for i in sorted(gone)]
-    for player in (0, 1):
-        ops.append(("resources", {"player": player, "gold": 0, "lumber": 0}))
-        ops += [("research", {"player": player, "type_id": t, "level": n}) for t, n in _upgrades()]
+    ops = base_ops(observations)
     units = army(rng)
     extra_units = reinforcements(rng, units, handicap) if handicap is not None and handicap > 1 else []
     ops += [("spawn", {"type_id": t, "player": p, "x": x, "y": y, "n": 1, **extra, "mana": FULL_MANA})
@@ -380,9 +387,14 @@ class Fight(Episode):
         self.began, self.last_order, self.score = 0.0, -1e9, None
 
     def start(self, i: int, obs: dict, session) -> None:
-        handicap = self.actor.handicap(self.game) if self.game.seatless else None
         rng = self.game.rng if self.game.rng is not None else self.actor.rng  # an evaluation round's own draws
-        session.stage(i, stage_ops(obs, rng, handicap, self.game.other), {slot: [] for slot in obs})
+        if self.game.scenario is not None:  # a scenario's fight in place of the ladder's (actor --scenarios)
+            scenario, level = self.game.scenario
+            ops = scenario.stage_ops(obs, rng, level, self.game.other)
+        else:
+            handicap = self.actor.handicap(self.game) if self.game.seatless else None
+            ops = stage_ops(obs, rng, handicap, self.game.other)
+        session.stage(i, ops, {slot: [] for slot in obs})
 
     def staged(self, obs: dict) -> None:
         self.began, self.score = obs[0].game_time_seconds, Score(obs)
@@ -393,6 +405,9 @@ class Fight(Episode):
             return {}
         self.last_order = now
         us, them = self.game.slot, self.game.other
+        if self.game.scenario is not None:
+            scenario, level = self.game.scenario
+            return {them: scenario.opponent(obs[them], obs[us], level)}
         return {them: attack_move(obs[them], obs[us])}
 
     def step(self, final: dict, done: bool, steps: int) -> Step:

@@ -1,11 +1,11 @@
-# Philosophy: how the loop works and what it optimizes
+# The loop: how it works and what it optimizes
 
 This folder runs a self-improvement loop: the work of an elite ML research team (read, hypothesize, build, measure,
 decide, write down), done continuously by agents with the user steering. Four files:
 
 | File | What |
 |---|---|
-| [philosophy.md](philosophy.md) | This: the goal, what to optimize, the rules every experiment follows |
+| [loop.md](loop.md) | This: the goal, what to optimize, the loop's stages and the rules every experiment follows |
 | [ideas.md](ideas.md) | What to try next on the current model, ranked; each idea with its source and the number it should move |
 | [next-model.md](next-model.md) | Changes to the network that need a retrain, batched into the next model |
 | [log.md](log.md) | One row per experiment (`E<n>`): what, why, against what, the numbers, the verdict |
@@ -23,12 +23,32 @@ not scale.
 1. **Throughput: steps/s, decided and learned.** Every other result arrives faster when the loop is faster. Measure
    the whole loop (games, actor, inference, learner) and fix the part that limits it; a faster part that is not the
    limit changes nothing ([9-benchmarks.md](../9-benchmarks.md#lessons)).
-2. **Clean, minimal, beautiful code.** The repo is public and meant to be read. Fewer lines beat more; one way to do
-   a thing; names that say what something is; no dead flags, no special cases left behind by experiments. An
-   experiment that wins is merged cleanly or not at all; one that loses is deleted, its lesson kept in the log.
+2. **Clean, minimal, beautiful code.** Good ideas come from time spent thinking, and time spent debugging tangled
+   code is taken from it: simplicity is what keeps the loop fast. See [Code](#code) and the consolidation stage.
 3. **Rapid iteration and evaluation.** Many small, decisive experiments beat a few large ones. Prefer the cheapest
    test that can answer the question: combat mode before whole games, a short run from a fixed checkpoint before a
    long one, an offline benchmark before a live run.
+
+## The loop's stages
+
+The loop alternates two kinds of stage, and never skips the second:
+
+1. **Bouts of experiments** (below): implement, measure, keep or drop, one question at a time. Each bout adds a
+   little code, and the code a run needs fast is rarely the code that reads best.
+2. **Consolidation**, after every few bouts (a phase's end at the latest: learner, throughput, curriculum): design,
+   refactor and re-architect until the code is clean again. Delete what lost; merge what won into the shape it should
+   have had from the start (one way to do each thing, the right module, the right names); redesign a part whose
+   structure the bouts outgrew. Behaviour is checked unchanged (tests, a short run against the log's numbers), and
+   the stage ends with less code, not more. Logged as its own row: what was removed, simplified or redesigned.
+
+## Code
+
+- **Simple first.** The fewest moving parts that do the job; one way to do a thing; no options nobody uses.
+- **No leftovers.** An experiment that loses is deleted, code and flags; its lesson stays in the log. One that wins
+  is merged cleanly, its flag removed once it is the only way, its constants explained where they are set.
+- **Names and structure say what things are.** A reader finds a piece where they would look for it.
+- **Refactor before adding.** When a change is awkward, the structure is wrong: fix the structure, then add.
+- **Lint and format pass** (`ruff check`, `ruff format`: CI enforces both).
 
 ## How to work
 
@@ -47,7 +67,8 @@ already dropped without a new reason.
 5. Stop as soon as the answer is clear: read steps/s from the change between two reports; a win-rate gap from a
    binomial interval, not one lucky block.
 6. Write one line in [log.md](log.md). Keep: merge cleanly and update [8-decisions.md](../8-decisions.md). Drop:
-   delete the code and add a "tried and dropped" line. Then re-rank [ideas.md](ideas.md).
+   delete the code and add a "tried and dropped" line. Then re-rank [ideas.md](ideas.md); after a few bouts,
+   consolidate (above).
 
 **Be honest with numbers.** Every number in these files comes from a log, W&B or code, with the run named. A result
 that is within noise is "level", not a win. Negative results are results: log them as carefully as wins.

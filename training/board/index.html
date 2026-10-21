@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wc3 run board</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.min.css">
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.30/dist/uPlot.iife.min.js"></script>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --line: #e3e6eb; --text: #1b1f24; --muted: #69727d; --accent: #2563eb;
+  --good: #16a34a; --bad: #dc2626; --warn: #d97706; --chip: #eef1f5; --hover: #f0f3f7; --sel: #e3ecfd;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #0f1216; --panel: #161a20; --line: #262c34; --text: #e6e9ed; --muted: #8b95a1; --accent: #60a5fa;
+          --chip: #1e242c; --hover: #1b2028; --sel: #1d2a3f; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 5; }
+header h1 { font-size: 15px; margin: 0; font-weight: 650; letter-spacing: .2px; }
+header .grow { flex: 1; }
+input[type=search] { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 5px 9px; width: 220px; }
+label.toggle { color: var(--muted); display: flex; gap: 5px; align-items: center; user-select: none; }
+.layout { display: grid; grid-template-columns: 330px 1fr; height: calc(100vh - 49px); }
+aside { border-right: 1px solid var(--line); overflow-y: auto; background: var(--panel); }
+.runrow { display: grid; grid-template-columns: 16px 1fr auto; gap: 4px 8px; padding: 7px 12px; border-bottom: 1px solid var(--line); cursor: pointer; }
+.runrow:hover { background: var(--hover); }
+.runrow.sel { background: var(--sel); }
+.runrow .name { font-weight: 600; font-family: var(--mono); font-size: 12.5px; }
+.runrow .meta { grid-column: 2 / 4; color: var(--muted); font-size: 11.5px; display: flex; gap: 8px; flex-wrap: wrap; }
+.runrow input { margin: 2px 0 0; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--line); margin-right: 5px; }
+.dot.live { background: var(--good); box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 25%, transparent); }
+.tag { background: var(--chip); color: var(--muted); border-radius: 4px; padding: 0 5px; font-size: 11px; font-family: var(--mono); }
+main { overflow-y: auto; padding: 16px 20px 40px; }
+.empty { color: var(--muted); padding: 60px; text-align: center; }
+.head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.head h2 { margin: 0; font-family: var(--mono); font-size: 19px; }
+.facts { display: flex; gap: 22px; flex-wrap: wrap; margin: 12px 0 4px; }
+.fact { display: flex; flex-direction: column; }
+.fact b { font-size: 17px; font-variant-numeric: tabular-nums; }
+.fact span { color: var(--muted); font-size: 11.5px; }
+a { color: var(--accent); text-decoration: none; cursor: pointer; }
+nav.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); margin: 14px 0 14px; }
+nav.tabs button { background: none; border: 0; border-bottom: 2px solid transparent; color: var(--muted); padding: 7px 12px; cursor: pointer; font: inherit; }
+nav.tabs button.on { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(460px, 1fr)); gap: 14px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px 6px; min-width: 0; }
+.card h3 { margin: 0 0 2px; font-size: 13px; font-weight: 600; }
+.card p.what { margin: 0 0 6px; color: var(--muted); font-size: 11.5px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 500; font-size: 11.5px; }
+td.mono, .mono { font-family: var(--mono); font-size: 12px; }
+details summary { cursor: pointer; color: var(--muted); }
+pre { white-space: pre-wrap; font-family: var(--mono); font-size: 11.5px; margin: 0; color: var(--muted); max-height: 420px; overflow: auto; }
+.legend-run { display: inline-flex; align-items: center; gap: 5px; margin-right: 12px; font-family: var(--mono); font-size: 12px; }
+.swatch { width: 10px; height: 3px; border-radius: 2px; display: inline-block; }
+.replay { display: grid; grid-template-columns: 260px 1fr; gap: 14px; }
+.replay .list { max-height: 560px; overflow-y: auto; }
+.replay .list div { padding: 5px 8px; border-radius: 5px; cursor: pointer; font-family: var(--mono); font-size: 12px; display: flex; justify-content: space-between; }
+.replay .list div:hover { background: var(--hover); }
+.replay .list div.on { background: var(--sel); }
+canvas.field { width: 100%; aspect-ratio: 1.45; background: var(--bg); border-radius: 6px; border: 1px solid var(--line); display: block; }
+.controls { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+.controls input[type=range] { flex: 1; }
+a.small { color: var(--text); background: var(--chip); border: 1px solid var(--line); border-radius: 5px; padding: 3px 10px; }
+button.small { background: var(--chip); border: 1px solid var(--line); color: var(--text); border-radius: 5px; padding: 3px 10px; cursor: pointer; font: inherit; }
+.win { color: var(--good); } .loss { color: var(--bad); }
+.u-legend { font-size: 11.5px; }
+.u-legend .u-marker { width: 10px; height: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>wc3 run board</h1>
+  <input type="search" id="filter" placeholder="filter runs (name, E-row)">
+  <label class="toggle"><input type="checkbox" id="liveOnly"> live only</label>
+  <a id="evalsLink" class="small">Evaluations</a>
+  <span class="grow"></span>
+  <span id="compareNote" style="color:var(--muted)"></span>
+  <span id="clock" style="color:var(--muted); font-variant-numeric: tabular-nums"></span>
+</header>
+<div class="layout">
+  <aside id="runs"></aside>
+  <main id="main"><div class="empty">Pick a run on the left. Tick several to compare them.</div></main>
+</div>
+<script>
+"use strict";
+const COLORS = ["#2563eb", "#dc2626", "#16a34a", "#d97706", "#7c3aed", "#0891b2", "#db2777", "#4b5563"];
+const TABS = ["Overview", "Learning", "System", "Behaviour", "Checkpoints", "Replays", "Notes"];
+const state = { runs: [], selected: null, compare: new Set(), tab: "Overview", data: {}, plots: [], replay: null };
+const $ = (s, el = document) => el.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmt = (v, d = 3) => v == null || Number.isNaN(v) ? "–" : Math.abs(v) >= 1000 ? Math.round(v).toLocaleString() : (+v).toPrecision(d).replace(/\.?0+$/, "");
+const pct = v => v == null ? "–" : (100 * v).toFixed(1) + "%";
+const ago = t => { const s = Date.now() / 1000 - t; return s < 90 ? Math.round(s) + " s ago" : s < 5400 ? Math.round(s / 60) + " min ago" : s < 172800 ? Math.round(s / 3600) + " h ago" : Math.round(s / 86400) + " d ago"; };
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+async function api(path) { const r = await fetch(path); if (!r.ok) throw new Error(path + ": " + r.status); return r.json(); }
+
+// ---- the run list
+async function loadRuns() {
+  state.runs = await api("/api/runs");
+  drawRuns();
+}
+function drawRuns() {
+  const q = $("#filter").value.trim().toLowerCase(), live = $("#liveOnly").checked;
+  const rows = state.runs.filter(r => (!live || r.live) && (!q || r.name.toLowerCase().includes(q) || r.experiments.some(e => e.toLowerCase().includes(q))));
+  $("#runs").innerHTML = rows.map(r => `
+    <div class="runrow ${r.name === state.selected ? "sel" : ""}" data-run="${esc(r.name)}">
+      <input type="checkbox" title="compare" ${state.compare.has(r.name) ? "checked" : ""}>
+      <span class="name"><span class="dot ${r.live ? "live" : ""}"></span>${esc(r.name)}</span>
+      <span style="color:var(--muted);font-size:11.5px">${ago(r.changed)}</span>
+      <div class="meta">
+        <span>u${r.update}</span><span>${r.games.toLocaleString()} fights</span>
+        <span title="won, last ~30 updates">${pct(r.won_recent)}</span>
+        ${r.handicap != null ? `<span>stage ${fmt(r.handicap)}</span>` : ""}
+        ${r.steps_per_s ? `<span>${r.steps_per_s.toLocaleString()}/s</span>` : ""}
+        ${r.experiments.map(e => `<span class="tag">${esc(e)}</span>`).join("")}
+      </div>
+    </div>`).join("") || `<div class="empty">No runs match.</div>`;
+  for (const el of document.querySelectorAll(".runrow")) {
+    const name = el.dataset.run;
+    el.querySelector("input").onclick = ev => { ev.stopPropagation(); ev.target.checked ? state.compare.add(name) : state.compare.delete(name); if (!state.selected) select(name); else draw(); drawRuns(); };
+    el.onclick = () => select(name);
+  }
+  const n = state.compare.size;
+  $("#compareNote").textContent = n ? `comparing ${n} run${n > 1 ? "s" : ""} with the selected one · ` : "";
+}
+async function select(name) {
+  state.selected = name; state.replay = null;
+  history.replaceState(null, "", "#" + encodeURIComponent(name) + "/" + state.tab);
+  drawRuns();
+  await fetchRun(name, true);
+}
+async function fetchRun(name, redraw) {
+  const names = [name, ...[...state.compare].filter(n => n !== name)];
+  const fetched = await Promise.all(names.map(n => api("/api/run/" + encodeURIComponent(n)).catch(() => null)));
+  names.forEach((n, i) => { if (fetched[i]) state.data[n] = fetched[i]; });
+  if (redraw) draw();
+}
+
+// ---- charts
+function destroyPlots() { state.plots.forEach(p => p.destroy()); state.plots = []; }
+function chart(el, { title, what, x, series, xlabel = "update", y = {}, band }) {
+  // series: [{label, values, color, dash}] over the shared x; values may hold nulls
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `<h3>${esc(title)}</h3>${what ? `<p class="what">${esc(what)}</p>` : ""}<div class="plot"></div>`;
+  el.appendChild(card);
+  const live = series.filter(s => s.values.some(v => v != null));
+  if (!x.length || !live.length) { card.querySelector(".plot").innerHTML = `<p class="what">not in this run's log</p>`; return; }
+  const width = Math.max(card.clientWidth - 24, 300);
+  const opts = {
+    width, height: 210,
+    scales: { x: { time: false }, y: { auto: true, ...(y.range ? { range: y.range } : {}) } },
+    axes: [
+      { stroke: css("--muted"), grid: { stroke: css("--line") }, ticks: { stroke: css("--line") }, label: xlabel, labelSize: 18, size: 36 },
+      { stroke: css("--muted"), grid: { stroke: css("--line") }, ticks: { stroke: css("--line") }, size: 52,
+        values: (u, v) => v.map(t => y.pct ? (100 * t).toFixed(0) + "%" : fmt(t, 3)) },
+    ],
+    legend: { live: true },
+    cursor: { drag: { x: true, y: false } },
+    series: [{ label: xlabel }, ...live.map(s => ({
+      label: s.label, stroke: s.color, width: s.width ?? 1.6, dash: s.dash, spanGaps: true,
+      points: { show: !s.nopoints && x.length < 40, size: 4 }, fill: s.fill,
+      value: (u, v) => v == null ? "–" : y.pct ? pct(v) : fmt(v, 4),
+    }))],
+  };
+  if (band) opts.bands = band;
+  const plot = new uPlot(opts, [x, ...live.map(s => s.values)], card.querySelector(".plot"));
+  state.plots.push(plot);
+  return plot;
+}
+// a series over updates, aligned for several runs on one x axis (the union of their updates)
+function aligned(runs, key, label = r => r) {
+  const xs = [...new Set(runs.flatMap(r => state.data[r].log.updates))].sort((a, b) => a - b);
+  return {
+    x: xs,
+    series: runs.map((r, i) => {
+      const d = state.data[r].log, at = new Map(d.updates.map((u, j) => [u, d.series[key]?.[j]]));
+      return { label: label(r), color: COLORS[i % COLORS.length], values: xs.map(u => at.get(u) ?? null) };
+    }),
+  };
+}
+// several keys of one run on one chart
+function keys(run, list) {
+  const d = state.data[run].log;
+  return { x: d.updates, series: list.map(([k, label], i) => ({ label, color: COLORS[i % COLORS.length], values: d.series[k] || [] })) };
+}
+function runsShown() { return [state.selected, ...[...state.compare].filter(n => n !== state.selected)].filter(n => state.data[n]); }
+
+function winChart(el, runs) {
+  if (runs.length === 1) {
+    const b = state.data[runs[0]].outcomes.bins;
+    const x = b.map(r => r[0]);
+    chart(el, {
+      title: "Wins by update", what: `training fights against the ladder, binned by the update they ended in (10 updates a bin), with the 95% interval; verdicts come from the fixed evaluation (Checkpoints)`,
+      x, y: { pct: true, range: [0, 1] },
+      series: [
+        { label: "won", values: b.map(r => r[1]), color: COLORS[0], width: 2 },
+        { label: "95% low", values: b.map(r => r[2]), color: "transparent", width: 0, nopoints: true },
+        { label: "95% high", values: b.map(r => r[3]), color: "transparent", width: 0, nopoints: true },
+      ],
+      band: [{ series: [3, 2], fill: COLORS[0] + "22" }],
+    });
+    return;
+  }
+  const xs = [...new Set(runs.flatMap(r => state.data[r].outcomes.bins.map(b => b[0])))].sort((a, b) => a - b);
+  chart(el, {
+    title: "Wins by update", what: "training fights against the ladder, binned by update", x: xs, y: { pct: true, range: [0, 1] },
+    series: runs.map((r, i) => { const m = new Map(state.data[r].outcomes.bins.map(b => [b[0], b[1]])); return { label: r, color: COLORS[i % COLORS.length], values: xs.map(u => m.get(u) ?? null) }; }),
+  });
+}
+// the scenarios' fights in training (actor --scenarios), one line a run and scenario
+function scenarioChart(el, runs) {
+  const lines = runs.flatMap(r => Object.entries(state.data[r].outcomes.scenarios || {}).map(([s, b]) => [runs.length > 1 ? `${r} ${s}` : s, b]));
+  if (!lines.length) return;
+  const xs = [...new Set(lines.flatMap(([, b]) => b.map(r => r[0])))].sort((a, b) => a - b);
+  chart(el, {
+    title: "Scenario fights by update", what: "wins in the training fights that are scenarios (actor --scenarios), each scenario and level binned apart from the ladder's; their probe is the scenario runner (Checkpoints)",
+    x: xs, y: { pct: true, range: [0, 1] },
+    series: lines.map(([label, b], i) => { const m = new Map(b.map(r => [r[0], r[1]])); return { label, color: COLORS[(i + 1) % COLORS.length], values: xs.map(u => m.get(u) ?? null) }; }),
+  });
+}
+function rateChart(el, runs) {
+  const xs = [...new Set(runs.flatMap(r => state.data[r].log.rate.map(p => p[0])))].sort((a, b) => a - b);
+  chart(el, {
+    title: "Decided steps / s", what: "all actors' game steps over the last minute (what ~/wc3/tools/rate.py differences)", xlabel: "minutes", x: xs,
+    series: runs.map((r, i) => { const m = new Map(state.data[r].log.rate); return { label: r, color: COLORS[i % COLORS.length], values: xs.map(t => m.get(t) ?? null) }; }),
+  });
+}
+const LEARNING = [
+  ["play/update_kl", "Update KL", "how far one update moved the policy (KL before → after on the first piece); --kl-target holds it near its target"],
+  ["play/lr", "Learning rate", "set by --kl-target each update (fixed without it)"],
+  ["play/clip_fraction", "Clip fraction", "share of steps whose ratio hit PPO's clip"],
+  ["play/kl_to_clone", "KL to the anchor", "drift from the --init policy, pulled back by --kl"],
+  ["play/explained_win", "Critic: explained variance (win)", "1 − var(returns − values) / var(returns); near 1 is a critic that predicts the fight"],
+  ["play/entropy", "Policy entropy", "all heads"],
+  ["play/grad_norm", "Gradient norm", "before clipping (--clip-grad)"],
+  ["play/advantage_std", "Advantage spread", "in reward units: what sets a step's size before normalising"],
+  ["play/value_loss", "Value loss", "the critic's, on normalised returns"],
+  ["play/policy_loss", "Policy loss", ""],
+  ["play/policy_lag", "Policy lag", "updates between the weights that played a step and the ones learning from it"],
+  ["play/upgo_mean", "UPGO advantage mean", "how much better than expected the followed actions were"],
+];
+
+// ---- the run page
+function draw() {
+  destroyPlots();
+  const name = state.selected, d = state.data[name];
+  if (!d) return;
+  const runs = runsShown();
+  const L = d.run?.learner || {}, launch = d.run?.launch || {};
+  const main = $("#main");
+  main.innerHTML = `
+    <div class="head">
+      <h2><span class="dot ${d.live ? "live" : ""}"></span>${esc(name)}</h2>
+      ${d.live ? `<span class="tag" style="color:var(--good)">live</span>` : `<span style="color:var(--muted)">last written ${ago(d.changed)}</span>`}
+      ${d.parent ? `<span style="color:var(--muted)">from ${state.runs.some(r => r.name === d.parent) ? `<a data-go="${esc(d.parent)}">${esc(d.parent)}</a>` : `<span class="mono">${esc(d.parent)}</span>`}</span>` : ""}
+      ${d.commit ? `<span class="tag" title="code commit">${esc(d.commit)}</span>` : ""}
+      ${d.experiments.map(e => `<span class="tag">${esc(e)}</span>`).join("")}
+    </div>
+    ${runs.length > 1 ? `<div style="margin-top:8px">${runs.map((r, i) => `<span class="legend-run"><span class="swatch" style="background:${COLORS[i % COLORS.length]}"></span>${esc(r)}</span>`).join("")}</div>` : ""}
+    <div class="facts">
+      <div class="fact"><b>${d.update}</b><span>updates</span></div>
+      <div class="fact"><b>${d.games.toLocaleString()}</b><span>ladder fights</span></div>
+      <div class="fact"><b>${pct(d.won_recent)}</b><span>won, last ~30 updates</span></div>
+      <div class="fact"><b>${d.handicap != null ? fmt(d.handicap) : "–"}</b><span>stage</span></div>
+      <div class="fact"><b>${d.steps_per_s ? d.steps_per_s.toLocaleString() : "–"}</b><span>decided steps/s</span></div>
+      <div class="fact"><b>${fmt(last(d, "play/memory_gb"))}</b><span>GB (the run's cgroup)</span></div>
+      <div class="fact"><b>${new Date(d.started * 1000).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}</b><span>started</span></div>
+    </div>
+    ${Object.keys(L).length ? `<details><summary>launch: ${esc(["lr " + L.lr, "kl " + L.kl, "kl-target " + L.kl_target, "batch " + L.batch, launch.actors ? launch.actors + "×" + launch.games + " games" : ""].filter(Boolean).join(" · "))}</summary>
+      <table style="margin-top:6px">${Object.entries({ ...launch, ...L }).filter(([k]) => !["rest", "on_save", "authkey"].includes(k)).map(([k, v]) => `<tr><td class="mono">${esc(k)}</td><td class="mono">${esc(JSON.stringify(v))}</td></tr>`).join("")}</table></details>` : ""}
+    <nav class="tabs">${TABS.map(t => `<button class="${t === state.tab ? "on" : ""}" data-tab="${t}">${t}${t === "Replays" && d.replays.length ? ` (${d.replays.length})` : ""}</button>`).join("")}</nav>
+    <div id="tab"></div>`;
+  main.querySelectorAll("[data-tab]").forEach(b => b.onclick = () => { state.tab = b.dataset.tab; history.replaceState(null, "", "#" + encodeURIComponent(name) + "/" + state.tab); draw(); });
+  main.querySelectorAll("[data-go]").forEach(a => a.onclick = () => select(a.dataset.go));
+  const tab = $("#tab");
+  ({ Overview, Learning, System, Behaviour, Checkpoints, Replays, Notes })[state.tab](tab, d, runs);
+}
+const last = (d, k) => { const v = d.log.series[k]; if (!v) return null; for (let i = v.length - 1; i >= 0; i--) if (v[i] != null) return v[i]; return null; };
+
+function Overview(tab, d, runs) {
+  const g = document.createElement("div"); g.className = "grid"; tab.appendChild(g);
+  winChart(g, runs);
+  scenarioChart(g, runs);
+  chart(g, { title: "Stage", what: "the ladder's opponent handicap (below 1: its hit points; past 1: more food)", ...aligned(runs, "play/handicap") });
+  rateChart(g, runs);
+  chart(g, { title: "Memory (GB)", what: "what the run's cgroup cannot reclaim (anonymous, shared, kernel; runs before 2026-10-20 10:00: with page cache), games included: it must level off below the scope's cap", ...aligned(runs, "play/memory_gb") });
+  chart(g, { title: "Update KL", what: LEARNING[0][2], ...aligned(runs, "play/update_kl") });
+  chart(g, { title: "KL to the anchor", what: LEARNING[3][2], ...aligned(runs, "play/kl_to_clone") });
+}
+function Learning(tab, d, runs) {
+  const g = document.createElement("div"); g.className = "grid"; tab.appendChild(g);
+  for (const [k, title, what] of LEARNING) chart(g, { title, what, ...aligned(runs, k) });
+}
+function System(tab, d, runs) {
+  const g = document.createElement("div"); g.className = "grid"; tab.appendChild(g);
+  chart(g, { title: "An update's time (s)", what: "waiting for a batch, the anchor's pass, training, the rest: a learner that never waits is the limit", ...keys(d.name, [["play/time_wait", "wait"], ["play/time_score", "anchor"], ["play/time_train", "train"], ["play/time_other", "other"], ["play/time_update", "update"]]) });
+  chart(g, { title: "Dropped chunks", what: "chunks older than --max-lag, thrown away: steps played for nothing", ...aligned(runs, "play/dropped") });
+  const rows = Object.entries(d.log.reports).sort();
+  const card = document.createElement("div"); card.className = "card"; card.style.gridColumn = "1 / -1";
+  const fields = ["game", "w_step", "queued", "decide", "inference", "busy", "gather", "step", "batch"];
+  card.innerHTML = `<h3>Latest reports</h3><p class="what">each actor's step loop (ms: the game's step, waiting to be decided, the decision, its inference round trip) and the inference processes'</p>
+    <table><tr><th>process</th><th>minute</th>${fields.map(f => `<th>${f}</th>`).join("")}<th>summary</th></tr>
+    ${rows.map(([who, r]) => `<tr><td class="mono">${esc(who)}</td><td>${fmt(r.at)}</td>${fields.map(f => `<td>${fmt(r[f])}</td>`).join("")}<td class="mono" style="color:var(--muted)">${esc(r.summary)}</td></tr>`).join("")}</table>`;
+  g.appendChild(card);
+}
+function Behaviour(tab, d) {
+  const g = document.createElement("div"); g.className = "grid"; tab.appendChild(g);
+  const s = d.log.series;
+  const shares = Object.keys(s).filter(k => k.startsWith("play/share_")).filter(k => s[k].some(v => v > 0.002));
+  chart(g, { title: "Order types", what: "each type's share of the learner's steps in an update", y: { pct: true }, ...keys(d.name, shares.map(k => [k, k.slice(11)])) });
+  const heads = Object.keys(s).filter(k => /^play\/entropy_(?!normalized)/.test(k));
+  chart(g, { title: "Entropy by head", what: "how undecided each head is", ...keys(d.name, heads.map(k => [k, k.slice(13)])) });
+  const casts = Object.keys(s).filter(k => /^play\/(cast|learn|item)_/.test(k)).map(k => [k, s[k].reduce((a, b) => a + (b || 0), 0) / s[k].length]).sort((a, b) => b[1] - a[1]).slice(0, 8);
+  chart(g, { title: "Spells, skills and items", what: "the most used, each one's share of the steps", y: { pct: true }, ...keys(d.name, casts.map(([k]) => [k, k.slice(5)])) });
+  chart(g, { title: "Rewards a game-minute", what: "each shaping channel's reward per 240 steps", ...keys(d.name, Object.keys(s).filter(k => k.startsWith("play/reward_")).map(k => [k, k.slice(12)])) });
+}
+function wilson(k, n, z = 1.96) { if (!n) return [0, 1]; const c = (k + z * z / 2) / (n + z * z), h = z * Math.sqrt(k * (n - k) / n + z * z / 4) / (n + z * z); return [Math.max(0, c - h), Math.min(1, c + h)]; }
+// what an evaluation fought: combat's fight at a stage, or a scenario at a level
+const where = e => (e.scenario || "fight") === "fight" ? `fight · stage ${fmt(e.handicap)}` : `${e.scenario} · level ${e.level}`;
+function Checkpoints(tab, d) {
+  tab.innerHTML = `
+    <div class="card"><h3>Fixed evaluations</h3><p class="what">training/bench/scenarios.py --record runs/evals.jsonl: the same fights for every checkpoint (seed, stage, count), so rows compare</p>
+    ${d.evals.length ? `<table><tr><th>when</th><th>fights</th><th>seed</th><th>checkpoint</th><th>won</th><th>95% interval</th><th>lost / draws</th></tr>
+      ${d.evals.flatMap(e => Object.entries(e.results).map(([p, r]) => { const [lo, hi] = wilson(r.won, r.fights); return `<tr><td>${ago(e.ended)}</td><td>${where(e)}</td><td>${e.seed}</td><td class="mono">${esc(p)}</td><td><b>${pct(r.won / r.fights)}</b> of ${r.fights}</td><td>${pct(lo)} – ${pct(hi)}</td><td>${r.lost} / ${r.draws}</td></tr>`; })).join("")}</table>`
+      : `<p class="what">none recorded for this run's checkpoints yet</p>`}</div>
+    <div class="card" style="margin-top:14px"><h3>Checkpoints</h3><table><tr><th>path</th><th>saved</th><th>MB</th><th></th></tr>
+      ${d.checkpoints.map(c => `<tr><td class="mono">${esc(c.path)}</td><td>${ago(c.saved)}</td><td>${c.mb}</td><td><a data-copy="${esc(`PYTHONPATH=src:. .venv/bin/python -m training.bench.scenarios --wine --device cuda --handicap 0.85 --seed 1000 --fights 400 --games 8 --record runs/evals.jsonl --policy ${c.path}`)}">copy eval command</a></td></tr>`).join("")}</table></div>`;
+  tab.querySelectorAll("[data-copy]").forEach(a => a.onclick = () => { navigator.clipboard.writeText(a.dataset.copy); a.textContent = "copied"; });
+}
+function Notes(tab, d) {
+  tab.innerHTML = `
+    ${d.experiment_rows.length ? `<div class="card"><h3>Experiments naming this run</h3><table><tr><th>row</th><th>ideas</th><th>hypothesis</th><th>verdict</th></tr>
+      ${d.experiment_rows.map(e => `<tr><td class="mono">${esc(e.id)}</td><td>${esc(e.ideas)}</td><td>${esc(e.hypothesis)}</td><td>${esc(e.verdict)}</td></tr>`).join("")}</table></div>` : ""}
+    <div class="card" style="margin-top:14px"><h3>The learner's notes</h3><pre>${esc(d.log.notes.join("\n")) || "none"}</pre></div>`;
+}
+
+// ---- replays: a recorded fight, unit by unit (training/selfplay/runfiles.py)
+const ORDERS = { 851983: "attack", 851986: "move", 851971: "smart", 851972: "stop", 851993: "hold", 851990: "patrol" };
+function Replays(tab, d) {
+  if (!d.replays.length) { tab.innerHTML = `<div class="empty">No replays in this run (actors record one fight every --replay-minutes; runs before 2026-10-20 have none).</div>`; return; }
+  tab.innerHTML = `<div class="replay"><div class="card list" id="rlist"></div><div class="card"><div id="rinfo" class="what" style="margin-bottom:6px"></div><canvas class="field" id="field"></canvas>
+    <div class="controls"><button class="small" id="play">pause</button><input type="range" id="scrub" min="0" value="0"><span id="rtime" class="mono"></span>
+    <select id="speed"><option value="1">1×</option><option value="2" selected>2×</option><option value="4">4×</option><option value="8">8×</option></select></div></div></div>`;
+  $("#rlist").innerHTML = d.replays.map(f => { const m = f.match(/^u(\d+)-a(\d+)/); return `<div data-f="${esc(f)}"><span>update ${+m[1]}</span><span style="color:var(--muted)">actor ${m[2]}</span></div>`; }).join("");
+  $("#rlist").querySelectorAll("[data-f]").forEach(el => el.onclick = () => openReplay(d.name, el.dataset.f));
+  openReplay(d.name, state.replay?.file && d.replays.includes(state.replay.file) ? state.replay.file : d.replays[0]);
+}
+async function openReplay(run, file) {
+  if (state.replay?.timer) cancelAnimationFrame(state.replay.timer);
+  document.querySelectorAll("#rlist [data-f]").forEach(el => el.classList.toggle("on", el.dataset.f === file));
+  const r = await api(`/api/replay/${encodeURIComponent(run)}/${encodeURIComponent(file)}`);
+  const xs = r.frames.flatMap(f => f[1].map(u => u[1])), ys = r.frames.flatMap(f => f[1].map(u => u[2]));
+  const box = { x0: Math.min(...xs) - 150, x1: Math.max(...xs) + 150, y0: Math.min(...ys) - 150, y1: Math.max(...ys) + 150 };
+  const won = r.outcome === "victory";
+  $("#rinfo").innerHTML = `<b class="${won ? "win" : "loss"}">${esc(r.outcome)}</b> · update ${r.update} · ${r.stage != null ? `stage ${fmt(r.stage)}` : esc(r.opponent || "")} · ${r.frames.length} steps ·
+    <span style="color:${COLORS[0]}">● learner</span> <span style="color:${COLORS[1]}">● opponent</span> · lines: each unit's order point`;
+  const st = state.replay = { file, r, box, i: 0, playing: true, t0: null };
+  const scrub = $("#scrub"); scrub.max = r.frames.length - 1;
+  scrub.oninput = () => { st.i = +scrub.value; st.playing = false; $("#play").textContent = "play"; paint(); };
+  $("#play").onclick = () => { st.playing = !st.playing; $("#play").textContent = st.playing ? "pause" : "play"; st.t0 = null; };
+  const step = ts => {
+    if (state.replay !== st) return;
+    if (st.playing) {
+      const speed = +$("#speed").value, f = r.frames;
+      if (st.t0 == null) st.t0 = { ts, game: f[st.i][0] };
+      const game = st.t0.game + (ts - st.t0.ts) / 1000 * speed;
+      while (st.i < f.length - 1 && f[st.i + 1][0] <= game) st.i++;
+      if (st.i >= f.length - 1) { st.playing = false; $("#play").textContent = "play"; }
+      scrub.value = st.i;
+    }
+    paint(); st.timer = requestAnimationFrame(step);
+  };
+  st.timer = requestAnimationFrame(step);
+}
+function paint() {
+  const st = state.replay, canvas = $("#field");
+  if (!st || !canvas) return;
+  const dpr = devicePixelRatio || 1, w = canvas.clientWidth, h = canvas.clientHeight;
+  if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  const g = canvas.getContext("2d"); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
+  const { box, r } = st, scale = Math.min(w / (box.x1 - box.x0), h / (box.y1 - box.y0));
+  const px = x => (x - box.x0) * scale + (w - (box.x1 - box.x0) * scale) / 2, py = y => h - ((y - box.y0) * scale + (h - (box.y1 - box.y0) * scale) / 2);
+  const [t, rows] = r.frames[st.i];
+  const color = p => COLORS[p === r.slot ? 0 : 1];
+  g.lineWidth = 1;
+  for (const [id, x, y, hp, order, ox, oy] of rows) {  // order lines first, under the units
+    if (!order || (!ox && !oy)) continue;
+    g.strokeStyle = color(r.units[id][1]) + "40"; g.beginPath(); g.moveTo(px(x), py(y)); g.lineTo(px(ox), py(oy)); g.stroke();
+  }
+  for (const [id, x, y, hp] of rows) {
+    const [type, player, max] = r.units[id], rad = Math.max(3.5, Math.min(11, Math.sqrt(max) / 3.2)), share = Math.max(0, Math.min(1, hp / max));
+    g.fillStyle = color(player); g.globalAlpha = 0.25 + 0.75 * share;
+    g.beginPath(); g.arc(px(x), py(y), rad, 0, Math.PI * 2); g.fill(); g.globalAlpha = 1;
+    g.strokeStyle = css("--bg"); g.lineWidth = 2.2; g.beginPath(); g.arc(px(x), py(y), rad + 2.5, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * share); g.strokeStyle = share > 0.5 ? "#16a34a" : share > 0.25 ? "#d97706" : "#dc2626"; g.stroke();
+  }
+  g.fillStyle = css("--muted"); g.font = "11px system-ui";
+  const alive = [0, 1].map(p => rows.filter(u => r.units[u[0]][1] === (p === 0 ? r.slot : 1 - r.slot)).length);
+  g.fillText(`learner ${alive[0]} units · opponent ${alive[1]}`, 10, 16);
+  $("#rtime").textContent = `${(t - r.frames[0][0]).toFixed(1)} s`;
+}
+
+// ---- every checkpoint's fixed evaluations, across runs
+async function showEvals() {
+  destroyPlots(); state.selected = null; state.replay = null; drawRuns();
+  history.replaceState(null, "", "#evaluations");
+  const evals = await api("/api/evals");
+  const rows = evals.flatMap(e => Object.entries(e.results).map(([p, r]) => ({ e, p, r, owner: e.owners[p], ci: wilson(r.won, r.fights), rate: r.won / r.fights })));
+  const groups = {};
+  for (const x of rows) (groups[`${where(x.e)} · seed ${x.e.seed} · ${x.e.fights} fights`] ??= []).push(x);
+  const W = 520, X = v => W * Math.max(0, (v - 0.4) / 0.6);  // 40-100%: where checkpoints differ
+  const bar = (lo, hi, rate) => `<svg width="${W}" height="16" style="display:block"><line x1="0" x2="${W}" y1="8" y2="8" stroke="${css("--line")}"/>
+      ${[0.5, 0.6, 0.7, 0.8, 0.9].map(t => `<line x1="${X(t)}" x2="${X(t)}" y1="2" y2="14" stroke="${css("--line")}"/>`).join("")}
+      <line x1="${X(lo)}" x2="${X(hi)}" y1="8" y2="8" stroke="${COLORS[0]}" stroke-width="5" stroke-linecap="round" opacity=".45"/>
+      <circle cx="${X(rate)}" cy="8" r="4" fill="${COLORS[0]}"/></svg>`;
+  $("#main").innerHTML = `<div class="head"><h2>Evaluations</h2><span style="color:var(--muted)">training/bench/scenarios.py --record runs/evals.jsonl · each bar a checkpoint's 95% interval on 40-100% (ticks at 50, 60, 70, 80, 90%); overlapping bars are not told apart</span></div>
+    ${Object.entries(groups).map(([g, xs]) => `<div class="card" style="margin-top:14px"><h3>${esc(g)}</h3><table>
+      <tr><th>player</th><th>run</th><th>won</th><th style="width:${W}px">interval</th><th>value kept</th><th>when</th></tr>
+      ${xs.sort((a, b) => b.rate - a.rate).map(x => `<tr><td class="mono">${esc(x.p)}</td><td>${x.owner && state.runs.some(r => r.name === x.owner) ? `<a data-go="${esc(x.owner)}">${esc(x.owner)}</a>` : esc(x.owner || "")}</td>
+        <td><b>${pct(x.rate)}</b> <span style="color:var(--muted)">[${pct(x.ci[0])}, ${pct(x.ci[1])}]</span></td><td>${bar(...x.ci, x.rate)}</td><td>${x.r.kept != null ? pct(x.r.kept) : "–"}</td><td style="color:var(--muted)">${ago(x.e.ended)}</td></tr>`).join("")}
+      </table></div>`).join("") || `<div class="empty">No evaluations recorded yet.</div>`}`;
+  $("#main").querySelectorAll("[data-go]").forEach(a => a.onclick = () => select(a.dataset.go));
+}
+$("#evalsLink").onclick = showEvals;
+
+// ---- refresh: the list every 15 s, the open run every 5 s while it is live
+async function tick() {
+  $("#clock").textContent = new Date().toLocaleTimeString();
+  try {
+    await loadRuns();
+    const d = state.data[state.selected];
+    if (state.selected && d && (d.live || [...state.compare].some(n => state.data[n]?.live))) {
+      const replay = state.replay; await fetchRun(state.selected, false);
+      if (state.tab !== "Replays") draw(); else if (replay) state.replay = replay;
+    }
+  } catch (e) { $("#clock").textContent = "board unreachable · " + new Date().toLocaleTimeString(); }
+}
+$("#filter").oninput = drawRuns; $("#liveOnly").onchange = drawRuns;
+window.onresize = () => state.selected && state.tab !== "Replays" && draw();
+function fromHash() {  // #run/Tab: a link to a run's page; #evaluations
+  if (location.hash === "#evaluations") return showEvals();
+  const [name, tab] = decodeURIComponent(location.hash.slice(1)).split("/");
+  if (TABS.includes(tab)) state.tab = tab;
+  if (name && name !== state.selected && state.runs.some(r => r.name === name)) select(name);
+}
+window.onhashchange = fromHash;
+(async () => { await loadRuns(); fromHash(); setInterval(tick, 8000); })();
+</script>
+</body>
+</html>

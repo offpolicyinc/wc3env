@@ -89,6 +89,32 @@ cut from pro replays. A passed scenario drops to the floor and stays as an eval.
 - Start from pro replay states where possible: realistic positions without hand-placing units.
 - Held-out seeds for evaluation.
 
+## Design: scenarios on combat mode (C2)
+
+A scenario is combat mode's `Fight` with four parts swapped; everything else (the network, the actions, the reward:
+the win and the army value traded) stays combat's, so a scenario trains the same policy on the same signal:
+
+| Part | Combat mode today | A scenario |
+|---|---|---|
+| Setup | `army(rng)` mirrored about a random point | its own draw per level: unit types and counts, positions, hp, items, trees |
+| Opponent | attack-move every 3 s (`attack_move`) | its own script per level (attack-move, a fleeing hero, a kiter, a caster) |
+| Scripted solution | none | a hand rule for the learner's side: the bar a level is passed at |
+| Success | the win | its own test on the fight's record (units saved, hero killed first, kept value): schedules and scores, never pays |
+
+- **Code.** `training/selfplay/scenarios.py`: each scenario a class (name, `LEVELS`; `stage_ops`, `opponent`,
+  `solution`, `baseline`) in a registry; combat's fight is the first ("fight", level = its stage). In training the
+  actor's `--scenarios focus_fire:0,focus_fire:1 --scenario-share 0.25` turns that share of the ladder's fights into
+  scenario fights, the opponent named "focus_fire/1", outside the ladder's count (the board bins them apart). A
+  scheduler (C4) would set the levels and shares from learning progress; until then they are fixed flags.
+- **Runner.** `training/bench/scenarios.py` (was combat_balance.py): a scenario, a level, held-out seeds,
+  and players among checkpoints, `solution` and the baseline script, all on the same draws, with Wilson intervals
+  and `--record`. A scenario is built only after its runner shows the solution beats the baseline (curriculum's own
+  rule; E9's pull-back did not).
+- **Hook.** Spawned units' hp and mana (`spawn`'s "hp": mixed-hp levels); trees with `destructable` for terrain
+  (body block, surround, kite near trees) on the flat arena instead of a new map (C6).
+- **First:** focus fire, level 0 (4 v 4 Grunts at even hp; solution: each unit attacks the enemy in range with the
+  lowest hp; baseline: attack-move), then the same with mixed units. Its runner result decides whether it is built.
+
 ## To build
 
 **First, on the current setup**

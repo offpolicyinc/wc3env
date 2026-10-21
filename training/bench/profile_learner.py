@@ -82,7 +82,7 @@ def profile() -> str:
         learner.step(batch, host)
     torch.cuda.synchronize()
 
-    say(f"packed step transformer (flash-attn found): {learner.varlen}")
+    say(f"packed step transformer (a variable-length kernel found): {learner.varlen}")
     if learner.varlen:  # the packed step transformer against the padded one, on one piece, same weights
         from training.policy.model import float32
         from training.selfplay.learner import _row_size, _rows, pack

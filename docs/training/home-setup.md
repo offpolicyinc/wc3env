@@ -78,6 +78,19 @@ python -m training.selfplay.run --init checkpoints/cb7.pt --out runs/selfplay/cb
 - `--init checkpoints/bc12.pt` instead puts the anchor back at the clone (as cb1 had); a choice for the user.
 - Check `run.py --help` and `learner.py --help` for the flags' current names before launching; verify, don't guess.
 
+## Watching a run
+
+```
+python -m training.board          # http://localhost:8770 (--host 0.0.0.0 to open it from another machine)
+```
+
+Every run under `runs/selfplay`, live while it trains: wins by update with 95% intervals, the stage, decided steps/s,
+the run's memory, the learner's diagnostics (update KL, learning rate, clip fraction, KL to the anchor, the critic's
+explained variance, entropy), an update's time split and each process's timings, order-type shares, the run's
+checkpoints, a few recorded fights to play back, and the experiments in [rsi/log.md](rsi/log.md) that name it. Tick
+runs to overlay them. Its Evaluations page lists every fixed evaluation with its interval: record one with
+`python -m training.bench.scenarios ... --record runs/evals.jsonl` (the Checkpoints tab copies the command).
+
 ## Sizing the run (the first job)
 
 At home the limit will be the CPU that runs the games (warcraftsim: games took 13 of 16 cores), not the GPU.
@@ -88,8 +101,8 @@ At home the limit will be the CPU that runs the games (warcraftsim: games took 1
 3. Note the numbers in [9-benchmarks.md](9-benchmarks.md) (a "home 3090 Ti" section). Modal did ~6,500 decided steps/s.
 4. The learner and inference share one GPU here (on Modal they had one each): MPS on, and the learner's `--micro 4`
    (or it runs out of memory beside inference).
-5. RAM sets the game count: under GE ~54 games (6 actors x 9) fit a 44 GB scope, ~2,000 decided steps/s on
-   2026-10-19 ([rsi/log.md](rsi/log.md) E20). An OOM-killed learner leaves its batch buffers in
+5. RAM sets the game count: under GE 54 games (6 actors x 9) fit a 44 GB scope, ~2,770 decided steps/s after
+   2026-10-20's throughput work ([rsi/log.md](rsi/log.md) E30-E38); 60 games (6 x 10) for long runs in a 52 GB one. An OOM-killed learner leaves its batch buffers in
    `/dev/shm/wc3-batches-*` (3 GB): delete them.
 
 ## The old 1080 Ti machine

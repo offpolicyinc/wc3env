@@ -35,7 +35,7 @@ learning player, over, outcome, minutes, reload). The actor has no `if combat` a
 
 ```
 python -m tools.prepare.arena                                         # once: the map and its map data
-python -m training.bench.combat_balance --fights 40                   # local: is a fight fair?
+python -m training.bench.scenarios --fights 40                        # local: is a fight fair?
 python -m training.cloud.selfplay start --name cb1 --mode combat --init runs/bc12/last.pt ... -- <learner flags>
 ```
 
@@ -124,7 +124,7 @@ weights it 1 throughout (`Combat.shaping`), unlike whole games' shaping, which f
 
 ## Measured: player 1 had an edge, now fixed
 
-`training/bench/combat_balance.py` has Warcraft's attack-move fight itself, 40 fights:
+`training/bench/scenarios.py` (then `combat_balance.py`) has Warcraft's attack-move fight itself, 40 fights:
 
 | Slots | Player 0 won | Player 1 won | Draws |
 |---|---|---|---|
@@ -150,13 +150,14 @@ self-play, as in whole games, only slot 0 is learned from.
 Training-game win rates can't compare checkpoints (the weights change mid-fight, the stage moves). A checkpoint is
 scored on fixed, held-out fights instead, as the local player against the ladder's attack-move at stage 0.85:
 
-    python -m training.bench.combat_balance --wine --device cuda --handicap 0.85 --seed 1000 --fights 400 --policy a.pt,b.pt
+    python -m training.bench.scenarios --wine --device cuda --handicap 0.85 --seed 1000 --fights 400 --policy a.pt,b.pt --games 8 \
+        --record runs/evals.jsonl
 
-Each checkpoint plays its own game, every fight drawn the same in each (seed 1000 on; training's draws come from the
-actors' own seeds), the map loaded again past 10 game minutes as in training. It prints each one's wins with a 95%
-interval and the fights only one of them won, with a sign test. 400 fights give +-4.7 points. The same draws barely
-pair the outcomes (E18: phi 0.07), so a gap of 10 points needs ~360 fights a checkpoint, 5 points ~1,450. cb9 0.66,
-cb7 0.51 (E18).
+Each checkpoint plays its own 8 games (its decisions batched; 3 checkpoints x 400 fights in ~10 min), every fight
+drawn the same in each (seed 1000 on; training's draws come from the actors' own seeds), the map loaded again past
+10 game minutes as in training. It prints each one's wins with a 95% interval and the fights only one of them won,
+with a sign test. 400 fights give +-4.7 points. The same draws barely pair the outcomes (E18: phi 0.07), so a gap of
+10 points needs ~360 fights a checkpoint, 5 points ~1,450. cb9 0.66, cb7 0.51 (E18).
 
 ## Files
 
@@ -170,7 +171,7 @@ cb7 0.51 (E18).
   policy's features read).
 - `training/cloud/selfplay.py --mode combat`: copies the map into each games sandbox and passes `--mode` to the actors
   and the learner.
-- `training/bench/combat_balance.py`: the fairness check above.
+- `training/bench/scenarios.py`: the fairness check and the fixed evaluation above (any scenario: training/selfplay/scenarios.py).
 
 Tested locally: learner and inference on CPU, one actor with 2 games for 900 steps, with heroes. 10 ladder fights
 ended and were reported to the league, the learner made 6 updates from the fight chunks, and no game failed.

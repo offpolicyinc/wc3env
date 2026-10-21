@@ -32,6 +32,7 @@ import collections
 import copy
 import gc
 import json
+import math
 import os
 import queue
 import threading
@@ -55,6 +56,8 @@ from . import modes
 from .batches import Batches, chunks_address
 from .league import START_MINUTES, League
 from .reward import CHANNELS, weights
+from .runfiles import memory_gb, update_run, write_replay
+from .scenarios import SCENARIOS
 from .transport import Packed, Server, address
 
 
@@ -237,6 +240,7 @@ class Learner:
         # every ladder game's start, end and result, a JSON line each: results by when games began
         # (training/cloud/selfplay_dashboard.py), which the running totals, counted as games finish, cannot give
         self.games_log = (self.out / "games.jsonl").open("a", buffering=1)
+        update_run(self.out, learner=vars(args))  # how the run was launched (the run board reads it)
         self.track = Track(
             self.out.name,
             {k: v for k, v in vars(args).items() if isinstance(v, (int, float, str, bool, type(None)))},
@@ -384,7 +388,7 @@ class Learner:
                             )
                             + "\n"
                         )
-                    else:  # a self-play game (from cb6): player 0's outcome, for the dashboard's blocks of games
+                    else:  # a self-play game (from cb6) or a scenario's fight (actor --scenarios): player 0's outcome
                         self.games_log.write(
                             json.dumps(
                                 {
@@ -415,6 +419,9 @@ class Learner:
                 }
         if kind == "log":
             self.say(payload)
+            return "ok"
+        if kind == "replay":  # an actor's recorded fight (runfiles.py): into replays/, with the update it ended in
+            write_replay(self.out, {**payload, "update": self.update})
             return "ok"
         if kind == "snapshot":
             return torch.load(self.out / "pool" / f"{payload}.pt", map_location="cpu", weights_only=True)
@@ -492,19 +499,28 @@ class Learner:
         parts = [(torch.arange(k, min(k + micro, n), device=self.device), *piece(np.arange(k, min(k + micro, n))))
                  for k in range(0, n, micro)]  # fmt: skip
         actor_values = a.actor_values and host["actor_values"]
+        # the anchor's pass on the first pieces only (--kl-sample; chunks come in no order): an unbiased KL from fewer
+        sampled = min(n, -(-math.ceil(n * a.kl_sample) // micro) * micro)  # chunks, the rest weighed 0
         values, references = [], []
         with torch.no_grad():
-            for rows, size, packing in parts:
+            for i, (rows, size, packing) in enumerate(parts):
                 b, st = _rows(batch, state, rows)
                 with torch.autocast(self.device.type, torch.bfloat16, enabled=cuda):
                     if not actor_values:
                         values.append(
                             self.model.value(self.model(b, st, rows=size, pack=packing), b["opponent"]).float()
                         )
-                    reference = float32(self.reference(b, st, rows=size, pack=packing))
-                references.append({k: v[0] for k, v in self.reference.log_probs(b, reference)[1].items()})
+                    if i * micro < sampled:
+                        reference = float32(self.reference(b, st, rows=size, pack=packing))
+                if i * micro < sampled:
+                    references.append({k: v[0] for k, v in self.reference.log_probs(b, reference)[1].items()})
         value = torch.where(valid[..., None], batch["actor_value"], 0.0) if actor_values else torch.cat(values)
         reference_lp = {k: torch.cat([r[k] for r in references]) for k in references[0]}
+        if sampled < n:  # the unsampled chunks' rows: zeros, weighed 0
+            reference_lp = {
+                k: torch.cat([v, v.new_zeros((n - sampled, *v.shape[1:]))]) for k, v in reference_lp.items()
+            }
+        kl_weight = (torch.arange(n, device=self.device) < sampled).float() * (n / sampled)
         clock.lap("time_score")
         # per reward channel [B, T, CHANNELS], then weighed by each channel's weight now (reward.weights: the shaping
         # fades with the win rate) into one advantage
@@ -580,6 +596,7 @@ class Learner:
                             stats,
                             steps / share,
                             None if upgo_advantage is None else upgo_advantage[rows],
+                            kl_weight[rows],
                         )
                     (loss * share).backward()
                     stats["value_loss"] += value_loss.detach() * share / steps
@@ -619,6 +636,12 @@ class Learner:
         stats["floored"] = torch.tensor(float((fresh & (a.explore_floor > 0)).sum()), device=self.device)
         names = list(stats)
         out = dict(zip(names, torch.stack([stats[k].float().reshape(()) for k in names]).tolist()))  # one wait
+        if a.kl_target and "update_kl" in out:  # the step held near a KL an update (rl_games' adaptive schedule)
+            lr = self.opt.param_groups[0]["lr"]
+            lr *= 1.5 if out["update_kl"] < a.kl_target / 2 else 1 / 1.5 if out["update_kl"] > 2 * a.kl_target else 1
+            for group in self.opt.param_groups:
+                group["lr"] = min(max(lr, a.lr / 10), a.lr * 10)
+            out["lr"] = self.opt.param_groups[0]["lr"]
         self.tries += np.round([out[f"share_{name}"] * float(valid.sum()) for name in TYPES]).astype(np.int64)
         out.update({f"tries_{name}": int(n) for name, n in zip(TYPES, self.tries) if name != "noop"})
         # which spells, items and skills: each argument's share of the steps (only those chosen this update)
@@ -654,7 +677,9 @@ class Learner:
                 self.model(b, st, rows=size, pack=packing)["core"].float().mean().backward()
         self.opt.zero_grad(set_to_none=True)
 
-    def _policy_loss(self, batch, out, advantage, reference_lp, epoch, stats, steps, upgo_advantage=None):
+    def _policy_loss(
+        self, batch, out, advantage, reference_lp, epoch, stats, steps, upgo_advantage=None, kl_weight=None
+    ):
         """PPO's clipped loss and the KL to the cloned policy. The heads run in float32: their log-probabilities are
         compared with the actors'."""
         a = self.args
@@ -698,6 +723,8 @@ class Learner:
                 type_bonus = masked_mean(head_entropy / options.log(), use & valid)
             stats[f"entropy_{name}"] += masked_mean(head_entropy, use).detach() / steps
             stats[f"kl_{name}"] += masked_mean(head_kl, use).detach() / steps
+        if kl_weight is not None:  # a chunk's weight: 0 without the anchor's pass, n / sampled with it
+            kl = kl * kl_weight[:, None]
         kl, entropy, bonus = masked_mean(kl, valid), masked_mean(entropy, valid), masked_mean(bonus, valid)
         loss = policy_loss + a.kl * kl - a.entropy * bonus - a.type_entropy * type_bonus
         if self.floor is not None:  # each floored type at least its floor where legal: log(floor) - log p, when above 0
@@ -810,7 +837,8 @@ class Learner:
                 results = list(self.recent_results)
                 outcomes = {}  # per kind of opponent: the share of wins, losses and time limits
                 for opponent, outcome, _, _ in results:
-                    key = opponent if opponent in self.league.ladder else "self/pool"
+                    scenario = opponent.split("/")[0] in SCENARIOS  # actor --scenarios: "focus_fire/1"
+                    key = opponent if opponent in self.league.ladder or scenario else "self/pool"
                     outcomes.setdefault(key, []).append(outcome)
                 record = " ".join(f"{k} won {v.count('victory') / len(v):.2f} lost {v.count('defeat') / len(v):.2f} "
                                   f"time {v.count('time limit') / len(v):.2f} ({len(v)})" for k, v in sorted(outcomes.items()))  # fmt: skip
@@ -827,6 +855,8 @@ class Learner:
                               **{f"ladder_{k}_total": self.outcomes.get(f"ladder {o}", 0) for k, o in
                                  (("won", "victory"), ("lost", "defeat"), ("timeout", "time limit"))},
                               "handicap": self.league.handicap})  # fmt: skip
+                if (memory := memory_gb()) is not None:  # the run's (its cgroup's: a home run's scope, games too)
+                    stats["memory_gb"] = memory
                 fields = " ".join(
                     f"{k} {v}" if k.endswith("_total") else f"{k} {v:.3g}" for k, v in sorted(stats.items())
                 )
@@ -956,8 +986,29 @@ def parser() -> argparse.ArgumentParser:
         "minibatch (0: the whole minibatch; an L4's 24 GB needs 4: 8 ran out once games grew)",
     )
     p.add_argument("--lr", type=float, default=4e-5, help="cb8-cb9's (2e-5 until then, VPT's)")
+    p.add_argument(
+        "--kl-sample",
+        type=float,
+        default=0.25,
+        help="the share of a batch's chunks the anchor scores for the KL (the rest weighed 0, these up): an unbiased "
+        "estimate for a quarter of its GPU time (E30: 3%% more steps/s, the same learning)",
+    )
+    p.add_argument(
+        "--kl-target",
+        type=float,
+        default=0.004,
+        help="the learning rate moved (x1.5 an update, within 10x of --lr) to hold update_kl near this, so a step's "
+        "size does not drift with the advantages' scale or the stage: the one thing that hurt in E21-E29 was steps too "
+        "large (rsi E28: learns as a fixed 4e-5, lr settling ~5.6e-5); 0: --lr fixed",
+    )
     p.add_argument("--clip", type=float, default=0.2)
-    p.add_argument("--clip-grad", type=float, default=1.0)
+    p.add_argument(
+        "--clip-grad",
+        type=float,
+        default=200.0,
+        help="the gradient's norm clipped to this: only outliers (norms run ~50-100; at 1 it clipped every step, rsi "
+        "E28)",
+    )
     p.add_argument(
         "--gamma",
         type=float,

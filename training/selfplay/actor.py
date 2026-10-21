@@ -50,10 +50,11 @@ from . import modes
 from .batches import chunks_address
 from .league import SELF, choose
 from .reward import CHANNELS
+from .runfiles import Recording
+from .scenarios import SCENARIOS
 from .transport import Client, address
 
 MAX_RESTARTS = 20
-GATHER = 0.003  # seconds an actor waits for more of its games' results before deciding those it has
 POLL = 0.001  # seconds between looks for the inference process's answers while games step
 MAX_ROUNDS = 3  # requests in flight to the inference process at most
 # chunks sent together as one segment, the learner's advantages computed over all of it (OpenAI Five's 256-step
@@ -66,7 +67,7 @@ class Stages:
     """Mean milliseconds per stage since the last report. Per game step: game (commands sent -> observation back),
     of it (wc3env.vector's info["hops"]) h_round the round trip from this process's socket, w_step the game's step
     in its worker and h_queue the observation waiting here to be read; queued (observation back -> its decision
-    begun: GATHER, or a full MAX_ROUNDS); decide (begun -> commands sent). Per request: inference (sent -> answer
+    begun: --gather, or a full MAX_ROUNDS); decide (begun -> commands sent). Per request: inference (sent -> answer
     read), blocked (of that, the actor waiting on it), begin and end (the actor's CPU), games (decided in it),
     in_flight (requests already out when it began). Per report: busy (% of the time the actor was not waiting)."""
 
@@ -176,6 +177,9 @@ class Game:
     # seat played by each evaluated policy in turn (League plan's "evaluate"), nothing recorded or learned
     eval: bool = False
     rng: np.random.Generator | None = None  # an evaluation game's draws (the fight's armies): the same for each policy
+    recording: Recording | None = None  # this episode, recorded for the run's replays/ (--replay-minutes)
+    # (a scenario, its level) in place of the ladder's fight (--scenarios): its opponent, outside the ladder's count
+    scenario: tuple | None = None
 
     @property
     def other(self) -> int:
@@ -223,19 +227,26 @@ class Actor:
         self.sent_at: dict[int, float] = {}  # game -> when its commands went, when its observation came, when begun
         self.back_at: dict[int, float] = {}
         self.begun_at: dict[int, float] = {}
+        self.next_replay = time.time() + 60  # the first a minute in, then every --replay-minutes
+        self.scenarios = [(n, float(lv) if n == "fight" else int(lv))  # fight's level: a stage (combat.HANDICAPS)
+                          for n, lv in (x.split(":") for x in self.args.scenarios.split(",") if x)]  # fmt: skip
 
     # ---- episodes
     def _start(self, game: Game) -> None:
         game.seats, game.policy, game.recorders, game.waiting, game.held = {}, {}, {}, {}, {}
         game.steps = 0
         game.opponent = self.rung if game.ladder else choose(self.league, self.rng)
-        evaluated = None
+        game.scenario, evaluated = None, None
+        if game.ladder and not game.eval and self.scenarios and self.rng.random() < self.args.scenario_share:
+            name, level = self.scenarios[self.rng.integers(len(self.scenarios))]
+            game.scenario, game.opponent = (SCENARIOS[name](), level), f"{name}/{level}"
         if game.eval:  # the next policy in turn; a round (one game each) shares its draws
             policies = self.league.get("evaluate") or ["latest"]
             evaluated = policies[self.eval_turns % len(policies)]
             game.rng = np.random.default_rng([self.args.seed, self.eval_turns // len(policies)])
             self.eval_turns += 1
-        elif game.ladder:  # the rung and stage it begins under: it counts only if the league is still there
+        # the rung and stage a ladder game begins under: it counts only if the league is still there
+        elif game.ladder and game.scenario is None:
             game.began, game.stage = time.time(), (game.opponent, self.league.get("stage", 0))
         for slot in (game.slot,) if game.seatless else (0, 1):  # the ladder's opponent has no seat
             race, other = game.matchup(slot)
@@ -305,7 +316,7 @@ class Actor:
                     if (
                         waiting
                         and len(rounds) < MAX_ROUNDS
-                        and (not in_flight or time.perf_counter() - first >= GATHER)
+                        and (not in_flight or time.perf_counter() - first >= self.args.gather)
                     ):
                         self.stages.add("in_flight", len(rounds), scale=1.0)  # requests already out
                         rounds.append(self._begin_round(waiting))
@@ -319,7 +330,7 @@ class Actor:
                     if rounds:
                         timeout = POLL
                     elif waiting:
-                        timeout = max(0.0, first + GATHER - time.perf_counter())
+                        timeout = max(0.0, first + self.args.gather - time.perf_counter())
                     else:
                         timeout = None
                     try:
@@ -452,10 +463,18 @@ class Actor:
             if done:  # (the game ended in it: stage again in the next one)
                 return self._begin(i, obs, session)
             game.episode.staged(obs)
+            if i == 0 and not game.eval and self.args.replay_minutes and time.time() >= self.next_replay:
+                stage = None if game.scenario else self.handicap(game)  # a scenario's: its level, in its name
+                game.recording = Recording(self.args.seed, game.slot, game.opponent, stage)
+                self.next_replay = time.time() + 60 * self.args.replay_minutes
+            if game.recording is not None:
+                game.recording.add(obs)
             return obs
         game.steps += 1
         final = info.get("final_observations") if done else obs
         step = game.episode.step(final, done, game.steps)
+        if game.recording is not None:
+            game.recording.add(final)
         for slot, rec in game.recorders.items():
             rec.extra["reward"][-1] = step.rewards[slot]
         if step.over:
@@ -466,6 +485,9 @@ class Actor:
             opponent = f"eval:{game.policy[game.slot]}" if game.eval else game.opponent  # the league leaves these out
             self.ended.append((opponent, outcome, score, minutes, gold / max(minutes, 1e-6), game.began, game.stage))
             game.began = game.stage = None
+            if game.recording is not None:
+                self.client.call("replay", game.recording.finish(outcome))
+                game.recording = None
             for slot, rec in game.recorders.items():
                 rec.extra["done"][-1] = True
                 if len(rec):
@@ -514,6 +536,7 @@ class Actor:
     def _abandon(self, game: Game) -> None:
         """A game that will not end (it failed, or its set of games is replaced): no longer running for the league."""
         game.began = game.stage = None
+        game.recording = None
 
     def _sync(self) -> None:
         """Ship finished chunks and game results; the league's state now and then (the inference process follows
@@ -583,6 +606,27 @@ def parser() -> argparse.ArgumentParser:
         "ladder's rung at the learner's --eval-stage, each of its --evaluate policies in turn, not learned from",
     )
     p.add_argument("--group", type=int, default=2, help="games per worker process")
+    p.add_argument(
+        "--replay-minutes",
+        type=float,
+        default=10,
+        help="one fight of the first game recorded for the run's replays/ every this many minutes (0: none)",
+    )
+    p.add_argument(
+        "--scenarios",
+        default="",
+        help="fights mode: scenarios a share of the ladder's fights become, name:level comma-separated (e.g. "
+        "focus_fire:0,focus_fire:1; training/selfplay/scenarios.py), each as likely; outside the ladder's count",
+    )
+    p.add_argument(
+        "--scenario-share", type=float, default=0.25, help="the share of the ladder's fights --scenarios takes"
+    )
+    p.add_argument(
+        "--gather",
+        type=float,
+        default=0.003,
+        help="seconds the actor waits for more of its games' results before deciding those it has",
+    )
     p.add_argument(
         "--mode", choices=modes.NAMES, default="game", help="whole games, or fights (training/selfplay/modes)"
     )

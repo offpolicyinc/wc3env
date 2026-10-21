@@ -41,8 +41,11 @@ from torch.nn.attention import SDPBackend, sdpa_kernel
 
 try:  # FlashAttention-2's variable-length kernel: the learner's step transformer on real tokens only (packed)
     from flash_attn import flash_attn_varlen_func
-except ImportError:  # no flash-attn here (a CPU, the inference image): the padded path
-    flash_attn_varlen_func = None
+except ImportError:
+    try:  # PyTorch's own (2.9 on): the same kernel without the package (home's torch has no flash-attn wheel)
+        from torch.nn.attention.varlen import varlen_attn as flash_attn_varlen_func
+    except ImportError:  # neither (a CPU, the inference image): the padded path
+        flash_attn_varlen_func = None
 
 from wc3env.binary import fourcc
 
@@ -409,8 +412,8 @@ class Policy(nn.Module):
         `rows`: that size when the caller knows it (reading the fullest count from the GPU waits for it).
         `pack`: (index, cu_seqlens) to run the transformer on the real tokens only (Block's packed form): index [T]
         the real tokens' places in the steps' [N * (rows + PATCHES + 1)] tokens, step after step, cu_seqlens [N + 1]
-        where each step's begin (learner.pack makes them; needs flash-attn). The padding rows come out zero; every
-        use of them is masked."""
+        where each step's begin (learner.pack makes them; needs a variable-length kernel: flash-attn or PyTorch's).
+        The padding rows come out zero; every use of them is masked."""
         n = s["units"].shape[0]
         if rows is None:
             fullest = max(1, int(s["unit_count"].max()))

@@ -17,7 +17,7 @@ environment.
 | [9-benchmarks.md](9-benchmarks.md) | Each part of self-play on Modal measured: the game, the hook, the tunnel, the actor, inference, the learner, cost; the run-by-run history |
 | [10-actor-design.md](10-actor-design.md) | The decision path: what runs where (game and hook, actors, two inference processes on a GPU of their own, the learner) and why |
 | [todo/](todo/README.md) | What is next, by area; finished lists in todo/done/ |
-| [rsi/](rsi/philosophy.md) | The self-improvement loop: its goal and rules, the ranked ideas, one line per experiment |
+| [rsi/](rsi/loop.md) | The self-improvement loop: its goal and rules, the ranked ideas, one line per experiment |
 | [12-hook-features.md](12-hook-features.md) | Features and masks: one implementation in C, in the hook and as a library; the block, the tests, how to change them |
 | [combat.md](combat.md) | Fights instead of whole games: mirrored Orc armies on a flat map, for debugging RL in minutes |
 | [selfplay-anatomy.html](selfplay-anatomy.html) | The whole pipeline on one page: machines, one decision, one PPO update, speeds, GPU, cost (open in a browser) |

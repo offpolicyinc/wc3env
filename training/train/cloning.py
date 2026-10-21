@@ -411,7 +411,10 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--log-every", type=int, default=50)
     p.add_argument("--seed", type=int, default=0)
     p.add_argument(
-        "--pack", action=argparse.BooleanOptionalAction, default=True, help="packed attention (needs flash-attn)"
+        "--pack",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="packed attention (needs flash-attn or PyTorch's varlen_attn)",
     )
     p.add_argument(
         "--compile",

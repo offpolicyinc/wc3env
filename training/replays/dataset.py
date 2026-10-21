@@ -187,9 +187,19 @@ def _append_masks(d, masks: dict) -> None:
 def append_label(d, obs, f, label, rows, static, arg_ids) -> None:
     """A replay's step: its features block, its label (an Action, or None for a noop) as the heads' indices, and the
     masks of the label's type and argument."""
+    _append_features(d, obs, f)
+    append_choice(d, f, label, rows, static, arg_ids)
+
+
+LABEL_KEYS = ("type", "argument", "actor", "target", "same_type", "size", "queued", "point")
+LABEL_KEYS += ("type_mask", "argument_mask", "actor_mask", "target_mask")
+
+
+def append_choice(d, f, label, rows, static, arg_ids) -> None:
+    """A label (an Action, or None for a noop) as the heads' indices and the masks of its type and argument, into
+    lists of LABEL_KEYS (and append_label's, which has them)."""
     from ..policy.native import chosen_masks
 
-    _append_features(d, obs, f)
     kind = label.type if label is not None else "noop"
     d["type"].append(TYPES.index(kind))
     d["argument"].append(arg_ids.get(label.argument, 0) if label is not None and label.argument else 0)
@@ -220,6 +230,13 @@ def append_decision(d, obs, f, choices: dict, masks: dict) -> None:
     else:
         d["point"].append(-1)
     _append_masks(d, masks)
+
+
+def label_arrays(d: dict) -> dict:
+    """Lists of LABEL_KEYS as arrays (arrays()'s types)."""
+    types = {"type": np.int8, "argument": np.int32, "actor": np.int16, "target": np.int16, "same_type": bool,
+             "size": np.int8, "queued": bool, "point": np.int32}  # fmt: skip
+    return {k: np.array(d[k], types[k]) if k in types else np.stack(d[k]) for k in LABEL_KEYS}
 
 
 def _save(target: Path, d: dict, static, result: int) -> None:

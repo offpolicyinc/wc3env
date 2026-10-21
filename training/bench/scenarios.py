@@ -27,14 +27,16 @@ import numpy as np
 from wc3env.session import GameConfig, MatchSetup, PlayerConfig
 from wc3env.vector import VectorSession, local_workers, wine_workers
 
+from ..policy.actions import translate
 from ..policy.agent import Agents, Seat
 from ..policy.features import STEP_MS, Static
 from ..policy.model import load
 from ..policy.native import hook_decision, hook_spec
 from ..selfplay.modes import combat
 from ..selfplay.scenarios import SCENARIOS
+from ..selfplay.teach import Teacher, legal
 
-SCRIPTS = ("solution", "baseline")
+SCRIPTS = ("solution", "baseline", "teacher")  # teacher: the solution's labels played as the model's actions (teach.py)
 
 
 def main() -> None:
@@ -51,13 +53,19 @@ def main() -> None:
     p.add_argument(
         "--policy",
         default="baseline",
-        help="the players, comma-separated: checkpoints, 'solution', 'baseline' (fight's baseline: attack-move)",
+        help="the players, comma-separated: checkpoints, 'solution', 'baseline' (fight's baseline: attack-move), "
+        "'teacher' (the solution as the labels training's --teach learns from, played from the model's slot)",
     )
     p.add_argument("--fights", type=int, default=40)
     p.add_argument("--seed", type=int, default=1)
     p.add_argument("--games", type=int, default=1, help="games a player, stepped together")
     p.add_argument("--device", default="cpu", help="where checkpoints decide (cuda: only when the GPU is free)")
     p.add_argument("--human", action="store_true", help="scripts only: player 0 the local slot, as checkpoints play")
+    p.add_argument(
+        "--computer",
+        action="store_true",
+        help="checkpoints too: player 0 a computer slot, its units casting on their own where not ordered (E43)",
+    )
     p.add_argument("--watch", action="store_true", help="a visible window at normal speed, the camera on each fight")
     p.add_argument("--wine", action="store_true", help="the game under Wine, from Linux ($WINEPREFIX)")
     p.add_argument(
@@ -67,15 +75,17 @@ def main() -> None:
     scenario = SCENARIOS[a.scenario]
     level = a.handicap if a.scenario == "fight" else a.level
     players = a.policy.split(",")
-    if "solution" in players and scenario.solution is None:
+    if ("solution" in players or "teacher" in players) and scenario.solution is None:
         raise SystemExit(f"{a.scenario} has no solution")
     static = Static.load(combat.MAP, ("orc", "orc"))
     agents = {name: Agents(load(name, a.device)) for name in players if name not in SCRIPTS}
+    local = bool(agents) or "teacher" in players  # player 0 the local slot, with the model's features
+    taught = {"labels": 0, "noops": 0, "illegal": 0}  # the teacher's steps: an order, none, one its masks forbid
     k, n = a.games, len(players) * a.games  # game g: player g // k, on draw g % k of each round
     config = GameConfig(map=combat.MAP, players=(PlayerConfig(0, "orc"), PlayerConfig(1, "orc")),
-                        setup=MatchSetup(seed=a.seed), computer_agents=() if a.human or agents else (0, 1), render=a.watch,
+                        setup=MatchSetup(seed=a.seed), computer_agents=() if a.human or (local and not a.computer) else (0, 1), render=a.watch,
                         background_visible=a.watch, sound=False, step_ms=STEP_MS, observation="binary",
-                        features={0: hook_spec(static)} if agents else None)  # fmt: skip
+                        features={0: hook_spec(static)} if local else None)  # fmt: skip
     rng, began = np.random.default_rng(a.seed), time.time()
     results = [{} for _ in players]  # player -> {fight: (winner, the share of its army's value it kept)}
     launch = wine_workers() if a.wine else local_workers
@@ -94,24 +104,33 @@ def main() -> None:
                         at = [(o["x"], o["y"]) for op, o in ops if op == "spawn"]
                         camera = {"x": sum(x for x, _ in at) / len(at), "y": sum(y for _, y in at) / len(at)}
             live = {}  # game -> [start, last scripted order, seat (the model's memory), score, the fight's scripts,
-            # player 0's army value at the start]
+            # player 0's army value at the start, its teacher]
             for _ in range(n):
                 g, obs[g], _, _ = games.recv()
                 score = combat.Score(obs[g])
-                live[g] = [obs[g][0].game_time_seconds, -1e9, Seat(static), score, scenario(), score.values[0]]
+                teacher = Teacher(scenario(), level, np.random.default_rng(g)) if players[g // k] == "teacher" else None
+                live[g] = [obs[g][0].game_time_seconds, -1e9, Seat(static), score, scenario(), score.values[0], teacher]
             if a.watch:
                 games.debug(0, "camera", **camera)
             while live:  # every live game a step at a time, each checkpoint's decisions in one batch
                 actions, decisions = {g: {0: [], 1: []} for g in live}, {}
                 for g, fight in live.items():
                     now, script, player = obs[g][0].game_time_seconds, fight[4], players[g // k]
-                    if now - fight[1] >= combat.ORDER_SECONDS:  # the opponent (and the baseline) re-aimed
+                    if now - fight[1] >= script.ORDER_SECONDS:  # the opponent (and the baseline) re-aimed
                         fight[1] = now
                         actions[g][1] = script.opponent(obs[g][1], obs[g][0], level)
                         if player == "baseline":
                             actions[g][0] = script.baseline(obs[g][0], obs[g][1], level)
                     if player == "solution":  # every step: it re-issues only orders that changed
                         actions[g][0] = script.solution(obs[g][0], obs[g][1], level)
+                    if player == "teacher":  # one order a step, as the model gives them
+                        label, f = fight[6].label(obs[g][0], obs[g][1]), obs[g][0].features
+                        taught["noops" if label is None else "labels"] += 1
+                        if label is not None:
+                            combat.allow(f)  # only the fight types, as in training
+                            taught["illegal"] += not legal(label, f)
+                            actions[g][0] = translate(label, obs[g][0])
+                            decisions[g] = {0: hook_decision(label)}
                 for name, agent in agents.items():
                     mine = [g for g in live if players[g // k] == name]
                     if not mine:
@@ -136,6 +155,10 @@ def main() -> None:
                               flush=True)  # fmt: skip
                         del live[g]
     report(a, players, [[r[f] for f in sorted(r)] for r in results], began)
+    if "teacher" in players:
+        print(
+            f"teacher: {taught['labels']} orders, {taught['noops']} noops, {taught['illegal']} orders its masks forbid"
+        )
 
 
 def report(a, players: list[str], results: list[list[tuple]], began: float) -> None:

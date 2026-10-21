@@ -25,7 +25,8 @@ are cloning runs, sp1-sp3 self-play runs; "Tried and dropped" at the end keeps w
 | Decision | Value | Why | Rests on |
 |---|---|---|---|
 | Algorithm | PPO, asynchronous actors, 64-step chunks | Simple and stable; chunks match the attention window | OpenAI Five, AlphaStar (V-trace instead) |
-| Learning rate | 4e-5 | Small steps from a cloned start; 2e-5 until cb8 | VPT; cb8-cb9 |
+| Learning rate | 2e-5, fixed | On the fight's held-stage benchmark a fixed 1e-5 to 2e-5 lifted l6la-450 3-5 points in 15 minutes (fixed eval 0.82 against 0.765), a fixed 4e-5 less, and the KL-held rate lowered it | rsi E56-E58; VPT |
+| The KL's anchor (`--init`) | The checkpoint a run starts from, not the clone | From hl20 at a held stage 0.95, anchored at hl20 0.68 against 0.65 anchored at the clone cb7 (30 min, ~10,800 fights each); a 2 h run anchored at cb7 fell 0.75 → 0.57 (E65) | rsi E65, E67 |
 | Clip | 0.2, plus dual clip 3 on negative advantages | sp2 collapsed when one stale sample had a probability ratio of 525 and a negative advantage: plain PPO does not bound that case | Ye et al. 2020; sp2 |
 | Epochs, batch | 1 epoch; 128 chunks per update in minibatches of 32 | More chunks per update means less weight lag per chunk; 128 at once did not fit the GPU; one epoch lets the learner keep up with the games | sp1 |
 | Discount | γ 0.9999 per step (a win 15 minutes away still counts 0.70), GAE λ 0.95 | 0.999 let little of a 20-minute game's result reach early decisions; 0.9997 (0.34 at 15 minutes) made losing at minute 10 (−0.49) cost more than running out the clock (−0.34): a reason to stall. At 0.9999: −0.79 against −0.70 | sp6 |
@@ -113,6 +114,7 @@ Why GCP VMs were tried for self-play; Modal's own prices and the current cost es
 | Rare actions weighted in the loss (0.25-10x by rarity, TStarBot-X) | A weighted loss learns the weighted odds, not the players': bc9 gave cancel 4x and attack-move 0.25x, cancelled its own production 4.8 times a minute (pros 0.11) and barely attacked; undoing the weights at play time gave 6 army units a game instead of 1 and attacks. AlphaStar does not weight |
 | A delay head (when to act next) | Pedantic: per-step noop already matched pros' acting rate |
 | A harness rule stopping builders from taking new orders | A hack around rally spam; fixed at the source (rally bursts) and with the Shift-queue head |
+| The learning rate moved to hold update_kl near 0.004 (rl_games' schedule, 2026-10-19 to 10-21) | It settled at 2.7e-5 to 6e-5 and lowered the fight 2 points in 20 minutes where a fixed 1e-5 to 2e-5 lifted it 3-5 (rsi E56-E58): plausibly why every run from l6la-450 ended below it (E41-E49) |
 | KL to the clone decaying by 0.9995 per update | Lets go of the clone entirely over a run |
 | KL reference reset to the current policy every 500 updates (ProRL) | sp3-sp4 drifted from the clone and forgot attacking; the reference now stays on the clone |
 | Shaping fading over a fixed number of updates | Unrelated to whether the policy can win; replaced by the win-rate weight |

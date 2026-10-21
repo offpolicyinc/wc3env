@@ -459,8 +459,8 @@ class VectorSession:
     def stage(self, i: int, ops: list, actions: dict) -> None:
         """Start game i's next step after staging ops ([(op, args)], GameSession.debug in order) in its worker; returns
         at once, and recv reports the step as any other. One message, so a staged episode costs no round trips of its
-        own. A "spawn" may also carry, for each unit it makes: "level" (a hero's), "mana", "items" (type ids, given),
-        and "learn" (a hero's skill ids, learned in that order before the step, one a step after a first step that
+        own. A "spawn" may also carry, for each unit it makes: "level" (a hero's), "mana", "hp" (hit points), "items"
+        (type ids, given), and "learn" (a hero's skill ids, learned in that order before the step, one a step after a first step that
         makes the new units commandable: those steps' observations are not reported)."""
         if i in self._busy:
             raise RuntimeError(f"game {i} is already stepping; recv() its result first")
@@ -522,16 +522,18 @@ def _stage(session: GameSession, ops: list, actions: dict) -> None:
     for op, args in ops:
         args = dict(args)
         extra = (
-            ("level", "mana", "items", "learn") if op == "spawn" else ()
+            ("level", "mana", "hp", "items", "learn") if op == "spawn" else ()
         )  # what each unit made gets (a research has a level of its own)
-        level, mana, items, learn = (
-            args.pop(k, None) if k in extra else None for k in ("level", "mana", "items", "learn")
+        level, mana, hp, items, learn = (
+            args.pop(k, None) if k in extra else None for k in ("level", "mana", "hp", "items", "learn")
         )
         for unit in _debug(session, op, args).get("unit_ids", []):
             if level is not None:
                 _debug(session, "level", {"unit_id": unit, "level": level})
             if mana is not None:
                 _debug(session, "mana", {"unit_id": unit, "value": mana})
+            if hp is not None:
+                _debug(session, "hp", {"unit_id": unit, "value": hp})
             for item in items or ():
                 _debug(session, "give", {"unit_id": unit, "type_id": item})
             if learn:

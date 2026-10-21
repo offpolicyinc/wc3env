@@ -179,10 +179,15 @@ def reinforcements(rng: np.random.Generator, units: list[tuple[str, dict]], shar
 
 
 def placements(
-    rng: np.random.Generator, units: list[tuple[str, dict]], extra_units: list = (), extra_player: int = 1
+    rng: np.random.Generator,
+    units: list[tuple[str, dict]],
+    extra_units: list = (),
+    extra_player: int = 1,
+    other: list | None = None,
 ) -> list:
-    """[(type, extra, player, x, y)] for both armies, player 1's player 0's mirror image about a random centre; then
-    `extra_player`'s `extra_units` (reinforcements), each in its type's row, past the ends of the mirrored one."""
+    """[(type, extra, player, x, y)] for both armies, player 1's player 0's mirror image about a random centre (or
+    `other`, player 1's own army, in its rows at the mirrored places); then `extra_player`'s `extra_units`
+    (reinforcements), each in its type's row, past the ends of the mirrored one."""
     (min_x, min_y, max_x, max_y), starts = arena()
     while True:
         centre = (rng.uniform(min_x + MARGIN, max_x - MARGIN), rng.uniform(min_y + MARGIN, max_y - MARGIN))
@@ -190,9 +195,14 @@ def placements(
             break
     angle, gap = rng.uniform(0, 2 * math.pi), rng.uniform(*GAP)
     along, across = (math.cos(angle), math.sin(angle)), (-math.sin(angle), math.cos(angle))
-    rows: dict[float, list] = {}
-    for unit in units:
-        rows.setdefault(ROWS[unit[0]], []).append(unit)
+
+    def by_row(army) -> dict[float, list]:
+        rows: dict[float, list] = {}
+        for unit in army:
+            rows.setdefault(ROWS[unit[0]], []).append(unit)
+        return rows
+
+    rows = by_row(units)
     more: dict[float, list] = {}
     for unit in extra_units:
         more.setdefault(ROWS[unit[0]], []).append(unit)
@@ -203,11 +213,13 @@ def placements(
         return -back * along[0] + side * across[0], -back * along[1] + side * across[1]
 
     out = []
-    for depth, types in rows.items():
-        for k, (t, extra) in enumerate(types):
-            dx, dy = offset(depth, (k - (len(types) - 1) / 2) * SPACING)
-            out.append((t, extra, 0, centre[0] + dx, centre[1] + dy))
-            out.append((t, extra, 1, centre[0] - dx, centre[1] - dy))  # the mirror image: same distances, facing back
+    for player, sign, army in ((0, 1, rows), *(((1, -1, by_row(other)),) if other is not None else ())):
+        for depth, types in army.items():
+            for k, (t, extra) in enumerate(types):
+                dx, dy = offset(depth, (k - (len(types) - 1) / 2) * SPACING)
+                out.append((t, extra, player, centre[0] + sign * dx, centre[1] + sign * dy))
+                if other is None:  # the mirror image: same distances, facing back
+                    out.append((t, extra, 1, centre[0] - dx, centre[1] - dy))
     side = 1 if extra_player == 0 else -1  # player 0's army at the centre + its offsets, player 1's at the centre -
     for depth, types in more.items():
         half = len(rows.get(depth, ())) / 2
@@ -401,7 +413,8 @@ class Fight(Episode):
 
     def commands(self, obs: dict) -> dict:
         now = obs[0].game_time_seconds
-        if not self.game.seatless or now - self.last_order < ORDER_SECONDS:
+        every = self.game.scenario[0].ORDER_SECONDS if self.game.scenario is not None else ORDER_SECONDS
+        if not self.game.seatless or now - self.last_order < every:
             return {}
         self.last_order = now
         us, them = self.game.slot, self.game.other

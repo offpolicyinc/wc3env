@@ -115,6 +115,34 @@ the win and the army value traded) stays combat's, so a scenario trains the same
 - **First:** focus fire, level 0 (4 v 4 Grunts at even hp; solution: each unit attacks the enemy in range with the
   lowest hp; baseline: attack-move), then the same with mixed units. Its runner result decides whether it is built.
 
+## Drill catalog (battle micro, 2026-10-20)
+
+Each drill: a fight where one skill decides it, a scripted solution, and attack-move as the baseline. A drill is built
+only when its solution beats the baseline (the gate, as two computer slots: in the local slot scripts cast nothing),
+then trained in the mix, and kept only when it also lifts the combat fight (the fixed evaluation). Sources: pro play
+(Liquipedia's unit and hero pages), SMAC / SMACv2 (kiting, corridor, surrounded starts), PySC2's
+DefeatZerglingsAndBanelings (spread), Shao 2018 (kiting, small to large), warcraftsim's micro log (pull-back +20 points
+over focus fire alone; tactics emerge only from a start that already has them).
+
+| # | Drill | What decides it | Solution (the script) | Needs | Status |
+|---|---|---|---|---|---|
+| 1 | focus fire | hits on few targets | each unit: the lowest-hp enemy within 700 | | built, E40, E42 |
+| 2 | hero snipe | the hero dies first | each unit: the enemy hero within 500, else the nearest | | built, E43, E44 (fails vs Healing Wave) |
+| 3 | kill summons | wards and wolves deal much and die fast | each unit: the nearest summon in reach, else focus fire | |built (both levels), E46 |
+| 4 | value focus | Headhunters and casters before Grunts | targets by dps / hp, no overkill, melee only near | |built (level 1; mixed 0.60 vs 0.53), E46 |
+| 5 | protect the hero | the hero survives the enemy's snipe | a hurt, attacked hero steps behind the army and drinks a potion; units attack its attackers | items |failed as built, E46 |
+| 6 | burst the healer | outdamage Healing Wave | hold until 4 units reach the hero, then all at once | |built, E46 |
+| 7 | pull back the focused unit | the attacker re-targets and walks | a unit losing hp fast below 40% steps back, returns when safe | spawn at mixed hp |built, E47 |
+| 8 | regroup, then engage | no trickling in | gather 600 short of the enemy until 90% are in, then attack | |failed as built, E46 |
+| 9 | dive the backline | casters and ranged die first | Raiders arc around the front line to the casters | |built, E46 |
+| 10 | surround a hero that runs when hurt | the hero cannot escape | a ring of slots around it, filled, then attack | a hero that fights, then runs, re-aimed every step | passed: 0.80 vs 0.00 (40 fights; E48 parked the version that ran from the start) |
+| 11 | kite | melee hits nothing while walking | shoot, step back when a melee unit is close, shoot again | faster ranged (a hero; other races) |parked (the script), E47 |
+| 12 | dodge area spells | Bladestorm, Shockwave, Stomp hit few | units in the area move out, spread | the enemy's current order | Bladestorm: 0.56-0.58 vs 0.52, not shown, E48 |
+| 13 | hold a choke | melee in a gap, ranged behind | Grunts hold the gap, Headhunters focus behind | trees (`destructable`) |needs a hook op that removes trees between fights |
+| 14 | answer air harass | not chasing Wyverns | hold together, focus the nearest in range | a hit-and-run opponent | |
+| 15 | items on time | Invulnerability after a disable, healing in time | drink at the disable, heal under 30% | other races (Storm Bolt) | |
+| 16 | disengage | retreat outnumbered, return with reinforcements | retreat below 0.7 of the enemy's value until help | timed spawns, a reward for surviving | |
+
 ## To build
 
 **First, on the current setup**

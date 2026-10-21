@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "run-board",
+      "runtimeExecutable": ".venv/bin/python",
+      "runtimeArgs": ["-m", "training.board", "--port", "8770"],
+      "port": 8770
+    }
+  ]
+}

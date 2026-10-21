@@ -61,6 +61,8 @@ def main() -> int:
     )
     p.add_argument("--scenarios", default="", help="the actors' --scenarios (fights: a share of the ladder's fights)")
     p.add_argument("--scenario-share", type=float, default=0.25, help="the actors' --scenario-share")
+    p.add_argument("--computer", action="store_true", help="the actors' --computer: the learner a computer slot too")
+    p.add_argument("--teachers", default="", help="the actors' --teachers (the learner's --teach weighs them)")
     p.add_argument("--inference-gather", type=float, default=0.001, help="the inference process's --gather")
     p.add_argument(
         "--inferences",
@@ -102,7 +104,8 @@ def main() -> int:
                        "--mode", args.mode, "--seed", str(k), "--steps", str(args.steps),
                        *(["--races", *args.races] if args.races else []), *(["--wine"] if args.wine else []), "--nice", str(args.nice),
                        "--gather", str(args.gather),
-                       *(["--scenarios", args.scenarios, "--scenario-share", str(args.scenario_share)] if args.scenarios else []))
+                       *(["--scenarios", args.scenarios, "--scenario-share", str(args.scenario_share)] if args.scenarios else []),
+                       *(["--teachers", args.teachers] if args.teachers else []), *(["--computer"] if args.computer else []))
                 for k in range(args.actors)]  # fmt: skip
     try:
         the_learner.run(stop=lambda: all(proc.poll() is not None for proc in actors))

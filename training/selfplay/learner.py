@@ -50,7 +50,7 @@ from ..policy.features import MAX_UNITS
 from ..policy.masks import ORDER_IDS, argument_ids
 from ..policy.model import ROW_SIZES, float32, load, masked_mean, pack, row_size
 from ..replays.dataset import ID_FIELDS
-from ..train.loader import ReplayData
+from ..train.loader import ReplayData, labels
 from ..train.track import Track
 from . import modes
 from .batches import Batches, chunks_address
@@ -59,6 +59,8 @@ from .reward import CHANNELS, weights
 from .runfiles import memory_gb, update_run, write_replay
 from .scenarios import SCENARIOS
 from .transport import Packed, Server, address
+
+FADE_WINDOW, FADE_GAMES = 100, 20  # --fade: results per kind of opponent, and how many before it fades
 
 
 def _rows(batch: dict, state: list | None, rows: torch.Tensor) -> tuple[dict, list | None]:
@@ -221,6 +223,16 @@ def prepare(chunks: list[dict], widths: list[int], allocate) -> dict:
                       "upgo": per_step([c["upgo"] for c in chunks], np.float32)}
                      if all("upgo" in c for c in chunks) else {}),
                   "opponent": per_step([c["opponent"] for c in chunks], np.float32, 0)}  # fmt: skip
+    if any("teach" in c for c in chunks):  # a teacher's labels (teach.py, --teach) as teach_<head>; zeros where none
+        taught = {i: labels(c["teach"], slice(None)) for i, c in enumerate(chunks) if "teach" in c}
+        for k, v in next(iter(taught.values())).items():
+            out, view = buffer((n, t, *v.shape[1:]), v.dtype, 0)
+            for i, x in taught.items():
+                view[i, : len(x[k])] = x[k]
+            h["dense"][f"teach_{k}"] = out
+        h["steps"]["taught"] = per_step(
+            [c["teach"]["taught"] if "teach" in c else np.zeros(len(c["done"]), bool) for c in chunks], bool, False
+        )
     # read here, on the CPU: the unit rows each chunk needs, and whether every step carries the actor's value
     h["fullest"] = np.array([int(np.max(c["unit_count"], initial=1)) for c in chunks])
     h["actor_values"] = all(np.isfinite(c["value"]).all() for c in chunks)
@@ -323,6 +335,10 @@ class Learner:
         self.saving: threading.Thread | None = None  # the thread writing last.pt
         self.save_seconds = self.write_seconds = 0.0  # the last save: copying it here, writing it there
         self.recent_results: collections.deque = collections.deque(maxlen=200)
+        # --fade: each kind of opponent's last FADE_WINDOW results (the ladder's rung, each scenario's level)
+        self.by_opponent: dict[str, collections.deque] = collections.defaultdict(
+            lambda: collections.deque(maxlen=FADE_WINDOW)
+        )
         # evaluation games (actors' --eval-games): the current policy ("latest") and each --evaluate checkpoint, in
         # turn on the same draws, at one fixed stage: policies compared under the same conditions at the same time
         self.evaluate = ["latest"]
@@ -405,6 +421,8 @@ class Learner:
                     if opponent in self.league.ladder:  # the ladder's alone, for the stop test (build/stop_check.py)
                         self.outcomes["ladder " + outcome] = self.outcomes.get("ladder " + outcome, 0) + 1
                     self.recent_results.append((opponent, outcome, minutes, gold_per_minute))
+                    if opponent in self.league.ladder or opponent.split("/")[0] in SCENARIOS:
+                        self.by_opponent[opponent].append(outcome == "victory")
             return "ok"
         if kind == "weights":  # (version, the weights or None when the caller has them, None)
             with self.lock:
@@ -414,6 +432,7 @@ class Learner:
             with self.lock:
                 return self.version, {
                     **self.league.plan(),
+                    **({"fade": self.fades()} if self.args.fade else {}),
                     "evaluate": self.evaluate,
                     "eval_handicap": self.eval_handicap,
                 }
@@ -536,7 +555,8 @@ class Learner:
                 upgo(batch["reward"], value, batch["done"], batch["bootstrap"], valid, self.gamma) if a.upgo else None
             )
         # the shaping's weight: the league's fading one, or the mode's own (combat: always 1, modes/combat.py)
-        weight = torch.from_numpy(weights(self.mode.shaping(self.league.shaping()), a.shaping_scale)).to(self.device)
+        shaping = 1.0 if a.fade else self.mode.shaping(self.league.shaping())  # --fade: the actors weighed each fight's
+        weight = torch.from_numpy(weights(shaping, a.shaping_scale)).to(self.device)
         advantage = (channels * weight).sum(-1)
         spread = _var(advantage, valid).sqrt()  # in reward units (a win is 1): logged, as it now sets the step's size
         # UPGO's (--upgo): scaled by the same spread but not centred, its sign is its point (better than expected)
@@ -598,6 +618,8 @@ class Learner:
                             None if upgo_advantage is None else upgo_advantage[rows],
                             kl_weight[rows],
                         )
+                        if a.teach and "taught" in batch:
+                            loss = loss + a.teach * self._teach_loss(b, out32, stats, steps / share)
                     (loss * share).backward()
                     stats["value_loss"] += value_loss.detach() * share / steps
                 stats["grad_norm"] += torch.nn.utils.clip_grad_norm_(self.model.parameters(), a.clip_grad) / steps
@@ -657,6 +679,16 @@ class Learner:
         out["segments"] = float(scored)
         out["policy_lag"] = float(self.version - host["versions"].mean())
         return out
+
+    def _teach_loss(self, b, out, stats, scale) -> torch.Tensor:
+        """--teach: the policy's cross-entropy on its teacher's labels (teach.py: on-policy distillation) on the steps
+        that have one; the heads read the label's earlier choices (teacher forcing), its masks those of its choice."""
+        teacher = {**b, **{k.removeprefix("teach_"): v for k, v in b.items() if k.startswith("teach_")}}
+        steps = b["taught"] & b["step_valid"].bool()
+        loss = -masked_mean(self.model.log_probs(teacher, out)[0], steps)
+        stats["teach_loss"] += loss.detach() / scale
+        stats["teach_steps"] += masked_mean(steps.float(), b["step_valid"].bool()).detach() / scale
+        return loss
 
     def _warm(self, batch, state) -> None:
         """Before the first update: the compiled blocks' programs for every unit row size, with and without
@@ -767,6 +799,14 @@ class Learner:
                 self.log.flush()
                 os._exit(3)
 
+    def fades(self) -> dict:
+        """--fade: each kind of opponent's shaping weight, League.shaping's rule on its own last FADE_WINDOW results
+        (1 below FADE_GAMES of them); "default" for the rest (self-play: the league's)."""
+        out = {"default": self.mode.shaping(self.league.shaping())}
+        for opponent, won in self.by_opponent.items():
+            out[opponent] = max(0.0, 1.0 - np.mean(won) / 0.5) if len(won) >= FADE_GAMES else 1.0
+        return out
+
     def run(self, stop=lambda: False) -> None:
         """Updates until --updates, or until stop() says so (run.py: when every actor has exited)."""
         a = self.args
@@ -855,6 +895,8 @@ class Learner:
                               **{f"ladder_{k}_total": self.outcomes.get(f"ladder {o}", 0) for k, o in
                                  (("won", "victory"), ("lost", "defeat"), ("timeout", "time limit"))},
                               "handicap": self.league.handicap})  # fmt: skip
+                if a.fade:  # each kind of opponent's shaping weight now
+                    stats.update({"fade_" + k.replace("/", "_").replace("-", "_"): v for k, v in self.fades().items()})
                 if (memory := memory_gb()) is not None:  # the run's (its cgroup's: a home run's scope, games too)
                     stats["memory_gb"] = memory
                 fields = " ".join(
@@ -985,7 +1027,13 @@ def parser() -> argparse.ArgumentParser:
         help="chunks through the GPU at once, gradients added up to a "
         "minibatch (0: the whole minibatch; an L4's 24 GB needs 4: 8 ran out once games grew)",
     )
-    p.add_argument("--lr", type=float, default=4e-5, help="cb8-cb9's (2e-5 until then, VPT's)")
+    p.add_argument(
+        "--lr",
+        type=float,
+        default=2e-5,
+        help="fixed (rsi E56-E58: on the fight 1e-5 to 2e-5 lift it, 4e-5 less, the "
+        "KL-held 2.7e-5 to 6e-5 lowered it); cb8-cb9's 4e-5",
+    )
     p.add_argument(
         "--kl-sample",
         type=float,
@@ -996,10 +1044,10 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--kl-target",
         type=float,
-        default=0.004,
+        default=0.0,
         help="the learning rate moved (x1.5 an update, within 10x of --lr) to hold update_kl near this, so a step's "
         "size does not drift with the advantages' scale or the stage: the one thing that hurt in E21-E29 was steps too "
-        "large (rsi E28: learns as a fixed 4e-5, lr settling ~5.6e-5); 0: --lr fixed",
+        "large (rsi E28: learns as a fixed 4e-5, lr settling ~5.6e-5); 0 (the default since rsi E58): --lr fixed",
     )
     p.add_argument("--clip", type=float, default=0.2)
     p.add_argument(
@@ -1059,6 +1107,13 @@ def parser() -> argparse.ArgumentParser:
         help="UPGO's policy term beside PPO's, at this weight (AlphaStar; "
         "DI-star 1.0, as its main term): a step's return follows what came after only while each next step "
         "did at least as well as the critic expected, so a good action is not charged for a later mistake",
+    )
+    p.add_argument(
+        "--teach",
+        type=float,
+        default=0.0,
+        help="the cross-entropy on a drill's teacher's labels beside PPO, at this weight (on-policy distillation: "
+        "training/selfplay/teach.py; warcraftsim 0.05-0.15)",
     )
     p.add_argument(
         "--explore-floor",
@@ -1151,6 +1206,12 @@ def parser() -> argparse.ArgumentParser:
         choices=modes.NAMES,
         default="game",
         help="what the actors play (training/selfplay/modes): its shaping's weight",
+    )
+    p.add_argument(
+        "--fade",
+        action="store_true",
+        help="the shaping fades by each kind of opponent's own win rate (the ladder's rung, each scenario's level): "
+        "1 at 0%%, its floor (reward.weights) from 50%%, weighed by the actors into each fight's rewards (fades())",
     )
     p.add_argument(
         "--shaping-scale",

@@ -27,8 +27,9 @@ from training.policy.native import hook_decision, hook_spec
 from training.selfplay.actor import Recorder
 from training.selfplay.league import HANDICAPS
 from training.selfplay.reward import CHANNELS
-from training.train.loader import ReplayData
-from wc3env.session import GameConfig, GameSession, MatchSetup, PlayerConfig
+from training.train.loader import ReplayData, labels
+from wc3env.session import GameConfig, MatchSetup, PlayerConfig
+from wc3env.vector import VectorSession, local_workers, wine_workers
 
 MAP = "Maps/FrozenThrone/(2)EchoIsles.w3x"
 
@@ -69,25 +70,29 @@ class RunTest(unittest.TestCase):
 @unittest.skipUnless(os.environ.get("WC3_E2E"), "plays a game: set WC3_E2E=1")
 class ConsistencyTest(unittest.TestCase):
     def test_learner_recomputes_the_actors_log_probabilities(self):
-        """A self-play game's chunk, sampled by the actor's code, scored again by the learner's: equal."""
+        """A self-play game's chunk, sampled by the actor's code, scored again by the learner's: equal; and its own
+        actions given as a teacher's labels (teach.py) score the same through the teacher's path."""
         torch.manual_seed(0)
         model = Policy().eval()
         seats = [Seat(Static.load(MAP, ("orc", "human"))), Seat(Static.load(MAP, ("human", "orc")))]
         config = GameConfig(map=MAP, players=(PlayerConfig(0, "orc"), PlayerConfig(1, "human")),
                             setup=MatchSetup(seed=3, randomize_starts=True), render=False, sound=False,
                             step_ms=250, observation="binary", features={s: hook_spec(seat.static) for s, seat in enumerate(seats)})  # fmt: skip
-        with contextlib.redirect_stdout(io.StringIO()), GameSession(config) as session:
+        launch = local_workers if sys.platform == "win32" else wine_workers()  # Linux: the game under Wine
+        with contextlib.redirect_stdout(io.StringIO()), VectorSession([config], launch=launch) as session:
             session.reset()
-            obs, _, _ = session.step({0: [], 1: []})
+            session.send(0, {0: [], 1: []})
+            _, obs, _, _ = session.recv()
             agents = Agents(model, 1.0, seed=1)
-            recorder = Recorder(seats[0].static, None, None, 0)
+            recorder = Recorder(seats[0].static, None, None, 0, teach=True)
             for _ in range(40):
                 blocks = [obs[0].features, obs[1].features]
                 opponents = [blocks[1]["scalars"], blocks[0]["scalars"]]
                 decisions = agents.act(seats, [obs[0], obs[1]], blocks, opponents)
-                recorder.add(obs[0], decisions[0], opponents[0])
+                recorder.add(obs[0], decisions[0], opponents[0], decisions[0].action)
                 taken = {s: hook_decision(d.action) for s, d in enumerate(decisions) if d.action is not None}
-                obs, _, _ = session.step({0: decisions[0].commands, 1: decisions[1].commands}, decisions=taken)
+                session.send(0, {0: decisions[0].commands, 1: decisions[1].commands}, taken)
+                _, obs, _, _ = session.recv()
         chunk = recorder.chunk(bootstrap=0.0)
         rows = ReplayData(chunk).chunk(0, 64)
         batch = {k: torch.from_numpy(v[None]) for k, v in rows.items()}
@@ -96,6 +101,17 @@ class ConsistencyTest(unittest.TestCase):
         n = len(chunk["log_prob"])
         np.testing.assert_allclose(log_prob[0, :n].numpy(), chunk["log_prob"], atol=2e-3)
         self.assertGreater(int((chunk["type"] > 0).sum()), 5)  # actions, not only noops
+        teacher = {
+            **rows,
+            **{
+                k: np.pad(v, [(0, 64 - n)] + [(0, 0)] * (v.ndim - 1))
+                for k, v in labels(chunk["teach"], slice(None)).items()
+            },
+        }
+        batch = {k: torch.from_numpy(v[None]) for k, v in teacher.items()}
+        with torch.no_grad():
+            taught, _ = model.log_probs(batch, model(batch))
+        np.testing.assert_allclose(taught[0, :n].numpy(), chunk["log_prob"], atol=2e-3)
 
 
 if __name__ == "__main__":

@@ -42,16 +42,18 @@ from wc3env.vector import VectorSession, dial_workers, local_workers, remote_wor
 
 from ..policy.agent import Agents, Decision, Seat
 from ..policy.features import STEP_MS, Static, env_race
+from ..policy.masks import argument_ids
 from ..policy.native import hook_decision, hook_spec
 from ..policy.plan import PlanBank
 from ..policy.plan import empty as empty_plan
-from ..replays.dataset import _lists, append_decision, arrays
+from ..replays.dataset import LABEL_KEYS, _lists, append_choice, append_decision, arrays, label_arrays
 from . import modes
 from .batches import chunks_address
 from .league import SELF, choose
-from .reward import CHANNELS
+from .reward import CHANNELS, weights
 from .runfiles import Recording
 from .scenarios import SCENARIOS
+from .teach import Teacher, legal
 from .transport import Client, address
 
 MAX_RESTARTS = 20
@@ -96,9 +98,20 @@ class Recorder:
     extra: dict = field(
         default_factory=lambda: {k: [] for k in ("log_prob", "value", "reward", "done", "opponent", "recent")}
     )
+    teach: bool = False  # a teacher labels its steps (teach.py): `taught`, LABEL_KEYS' lists and "taught" (labelled)
+    taught: dict | None = field(init=False, default=None)
 
-    def add(self, obs, d: Decision, opponent: np.ndarray) -> None:
+    def __post_init__(self):
+        if self.teach:
+            self.taught = {k: [] for k in (*LABEL_KEYS, "taught")}
+
+    def add(self, obs, d: Decision, opponent: np.ndarray, label=None) -> None:  # label: a teacher's (None: a noop)
         append_decision(self.lists, obs, d.features, d.choices, d.masks)
+        if self.taught is not None:
+            rows = list(d.features["unit_id"][: int(d.features["unit_count"])])
+            ok = label is None or legal(label, d.features)  # (None: a noop's)
+            append_choice(self.taught, d.features, label if ok else None, rows, self.static, argument_ids())
+            self.taught["taught"].append(ok)  # one the model could not give: no label
         self.extra["recent"].append(d.features["recent"])  # the cells of the decisions before this step
         self.extra["log_prob"].append(d.log_prob)
         self.extra["value"].append(d.value)
@@ -128,6 +141,8 @@ class Recorder:
         plan = self.plan if self.plan is not None else empty_plan()
         for k in ("heroes", "order", "mix"):
             out[f"plan_{k}"] = np.asarray(plan[k])
+        if self.taught is not None:
+            out["teach"] = {**label_arrays(self.taught), "taught": np.array(self.taught["taught"])}
         return out
 
 
@@ -180,6 +195,9 @@ class Game:
     recording: Recording | None = None  # this episode, recorded for the run's replays/ (--replay-minutes)
     # (a scenario, its level) in place of the ladder's fight (--scenarios): its opponent, outside the ladder's count
     scenario: tuple | None = None
+    teacher: Teacher | None = None  # the scenario's solution, labelling the learning player's steps (teach.py)
+    # each reward channel's weight in this episode (learner --fade: by its kind of opponent's win rate); None: 1
+    weight: np.ndarray | None = None
 
     @property
     def other(self) -> int:
@@ -230,16 +248,19 @@ class Actor:
         self.next_replay = time.time() + 60  # the first a minute in, then every --replay-minutes
         self.scenarios = [(n, float(lv) if n == "fight" else int(lv))  # fight's level: a stage (combat.HANDICAPS)
                           for n, lv in (x.split(":") for x in self.args.scenarios.split(",") if x)]  # fmt: skip
+        self.teachers = set(filter(None, self.args.teachers.split(",")))
 
     # ---- episodes
     def _start(self, game: Game) -> None:
         game.seats, game.policy, game.recorders, game.waiting, game.held = {}, {}, {}, {}, {}
         game.steps = 0
         game.opponent = self.rung if game.ladder else choose(self.league, self.rng)
-        game.scenario, evaluated = None, None
+        game.scenario, game.teacher, evaluated = None, None, None
         if game.ladder and not game.eval and self.scenarios and self.rng.random() < self.args.scenario_share:
             name, level = self.scenarios[self.rng.integers(len(self.scenarios))]
             game.scenario, game.opponent = (SCENARIOS[name](), level), f"{name}/{level}"
+            if f"{name}:{level}" in self.teachers:
+                game.teacher = Teacher(SCENARIOS[name](), level, self.rng)
         if game.eval:  # the next policy in turn; a round (one game each) shares its draws
             policies = self.league.get("evaluate") or ["latest"]
             evaluated = policies[self.eval_turns % len(policies)]
@@ -255,6 +276,8 @@ class Actor:
             if evaluated is not None:
                 game.policy[slot] = evaluated
         game.episode = self.mode.episode(self, game)
+        fade = self.league.get("fade")  # learner --fade: the shaping weighed here, by this kind of opponent's win rate
+        game.weight = None if fade is None else weights(fade.get(game.opponent, fade["default"]))
 
     def handicap(self, game: Game) -> float:
         """The ladder opponent's handicap for this game: the league's stage, or the fixed evaluation stage."""
@@ -280,6 +303,7 @@ class Actor:
                 map=self.map,
                 players=tuple(PlayerConfig(slot, env_race(g.matchup(slot)[0])) for slot in (0, 1)),
                 **self.mode.config(g, self.rung),
+                computer_agents=(0, 1) if self.args.computer else (),
                 setup=MatchSetup(seed=int(self.rng.integers(2**31 - 1)), randomize_starts=True),
                 render=False,
                 game_cuts=self.args.game_cuts,
@@ -422,7 +446,7 @@ class Actor:
         for agents, members, opponents, handle in begun:
             learning = opponents is not None
             decisions = agents.end(handle)
-            for k, ((i, slot, seat, obs, _), d) in enumerate(zip(members, decisions)):
+            for k, ((i, slot, seat, obs, enemy), d) in enumerate(zip(members, decisions)):
                 actions[i][slot] = d.commands
                 if d.action is not None:
                     taken[i][slot] = hook_decision(d.action)
@@ -433,7 +457,8 @@ class Actor:
                         self._begin_chunk(i, slot, seat, d.start_state)
                     if slot in game.waiting:  # the chunk before this one ends where this step's value begins
                         self._ship(game, slot, game.waiting.pop(slot).chunk(bootstrap=d.value))
-                    game.recorders[slot].add(obs, d, opponents[k])
+                    label = game.teacher.label(obs, enemy) if game.teacher is not None else None
+                    game.recorders[slot].add(obs, d, opponents[k], label)
         for i, obs in observations.items():  # the mode's scripted side, if any
             for slot, commands in self.games[i].episode.commands(obs).items():
                 actions[i][slot] = actions[i][slot] + commands
@@ -450,7 +475,7 @@ class Actor:
         old = game.recorders.get(slot)
         if old is not None and len(old):
             game.waiting[slot] = old
-        game.recorders[slot] = Recorder(seat.static, seat.plan, state, self.version)
+        game.recorders[slot] = Recorder(seat.static, seat.plan, state, self.version, teach=game.teacher is not None)
 
     def _after(self, i: int, obs: dict, done: bool, info: dict, session) -> dict | None:
         """Game i's step came back: its rewards recorded; at an episode's end, the result reported and the next
@@ -476,7 +501,7 @@ class Actor:
         if game.recording is not None:
             game.recording.add(final)
         for slot, rec in game.recorders.items():
-            rec.extra["reward"][-1] = step.rewards[slot]
+            rec.extra["reward"][-1] = step.rewards[slot] if game.weight is None else step.rewards[slot] * game.weight
         if step.over:
             # what the league counts: a win 1, a loss or the time limit 0, a draw 0.5 (0 against the ladder rung)
             outcome, minutes = step.outcome, step.minutes
@@ -620,6 +645,17 @@ def parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--scenario-share", type=float, default=0.25, help="the share of the ladder's fights --scenarios takes"
+    )
+    p.add_argument(
+        "--computer",
+        action="store_true",
+        help="the learning player's slot a computer slot too: its units cast on their own where not ordered (E43)",
+    )
+    p.add_argument(
+        "--teachers",
+        default="",
+        help="scenarios (name:level, comma-separated) whose solution labels the learning player's steps (teach.py; "
+        "the learner's --teach): those whose script beats the model from its slot",
     )
     p.add_argument(
         "--gather",

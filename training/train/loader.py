@@ -28,6 +28,34 @@ from ..replays.dataset import ID_FIELDS
 UNGROUPED = {TYPES.index(t) for t in ("noop", "buy", *SINGLE, *PRODUCTION)}
 
 
+def labels(d: dict, steps: slice) -> dict:
+    """The label's heads and the masks it was chosen under, for steps of a file's (or chunk's) arrays: the choice
+    a step stores as the heads' indices (data set: dataset.append_label; self-play: the actor's, and its teacher's,
+    training/selfplay/teach.py)."""
+    out = {}
+    n_args = len(argument_ids()) + 1
+    t = len(d["type"][steps])
+    out["type_mask"] = d["type_mask"][steps]
+    out["argument_mask"] = np.unpackbits(d["argument_mask"][steps], axis=-1)[:, :n_args].astype(bool)
+    out["actor_mask"] = np.unpackbits(d["actor_mask"][steps], axis=-1)[:, :MAX_UNITS].astype(bool)
+    out["target_mask"] = np.unpackbits(d["target_mask"][steps], axis=-1)[:, :MAX_UNITS].astype(bool)
+    kind = d["type"][steps].astype(np.int64)
+    point, target = d["point"][steps].astype(np.int64), d["target"][steps].astype(np.int64)
+    out["type"] = kind
+    out["argument"] = d["argument"][steps].astype(np.int64)
+    out["aim"] = np.where(point >= 0, 1, np.where(target >= 0, 2, 0)).astype(np.int64)
+    out["actor"] = d["actor"][steps].astype(np.int64)
+    out["target"] = target
+    out["same_type"] = d["same_type"][steps].astype(np.int64)
+    out["queued"] = d["queued"][steps].astype(np.int64) if "queued" in d else np.zeros(t, np.int64)
+    out["size"] = d["size"][steps].astype(np.int64)
+    out["grouped"] = ~np.isin(kind, list(UNGROUPED))
+    py, px = point // MAP, point % MAP
+    out["region"] = np.where(point >= 0, (py // PATCH) * (MAP // PATCH) + px // PATCH, -1).astype(np.int64)
+    out["cell"] = np.where(point >= 0, (py % PATCH) * PATCH + px % PATCH, -1).astype(np.int64)
+    return out
+
+
 class ReplayData:
     """One data set file, or the same arrays in memory (a self-play chunk: training/selfplay/actor.py), which
     may carry each step's `recent` decision cells itself (its earlier steps are not there to recompute them)."""
@@ -164,25 +192,7 @@ class ReplayData:
         out["recent"] = recent
         out["scalars"] = d["scalars"][steps].astype(np.float32)
         out["previous_type"] = d["previous_type"][steps].astype(np.int64)
-        n_args = len(argument_ids()) + 1
-        out["type_mask"] = d["type_mask"][steps]
-        out["argument_mask"] = np.unpackbits(d["argument_mask"][steps], axis=-1)[:, :n_args].astype(bool)
-        out["actor_mask"] = np.unpackbits(d["actor_mask"][steps], axis=-1)[:, :MAX_UNITS].astype(bool)
-        out["target_mask"] = np.unpackbits(d["target_mask"][steps], axis=-1)[:, :MAX_UNITS].astype(bool)
-        kind = d["type"][steps].astype(np.int64)
-        point, target = d["point"][steps].astype(np.int64), d["target"][steps].astype(np.int64)
-        out["type"] = kind
-        out["argument"] = d["argument"][steps].astype(np.int64)
-        out["aim"] = np.where(point >= 0, 1, np.where(target >= 0, 2, 0)).astype(np.int64)
-        out["actor"] = d["actor"][steps].astype(np.int64)
-        out["target"] = target
-        out["same_type"] = d["same_type"][steps].astype(np.int64)
-        out["queued"] = d["queued"][steps].astype(np.int64) if "queued" in d else np.zeros(t, np.int64)
-        out["size"] = d["size"][steps].astype(np.int64)
-        out["grouped"] = ~np.isin(kind, list(UNGROUPED))
-        py, px = point // MAP, point % MAP
-        out["region"] = np.where(point >= 0, (py // PATCH) * (MAP // PATCH) + px // PATCH, -1).astype(np.int64)
-        out["cell"] = np.where(point >= 0, (py % PATCH) * PATCH + px % PATCH, -1).astype(np.int64)
+        out.update(labels(d, steps))
         out["result"] = np.full(t, int(d["result"]), np.int64)
         missing = length - t
         if missing > 0:

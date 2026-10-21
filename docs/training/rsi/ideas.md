@@ -8,6 +8,23 @@ rank puts them, tested ones drop to the bottom of their section.
 
 Status: `next` (top of the queue), `open`, `running`, `E<n>` (tested, see the log), `blocked: <why>`.
 
+## The plan (2026-10-21, the user's recipe)
+
+Why: since l6la every run from it ends level or below it (E41-E49): the learner gets little from each game (4 gradient
+steps per 8k steps, update KL ~0.003, mostly noise), while drills that make one skill decide the fight are learned
+(E42, E44, E49). The recipe, in order; each phase's verdict in log.md, its status here.
+
+| Phase | What | Done when | Status |
+|---|---|---|---|
+| P1 | warcraftsim's update scheme in our learner as a starting arm, not his code: its algorithm and settings read from his code (self-play: 2 passes over 8,192 steps in minibatches of 256 = 64 steps, lr 5e-5, gradient clip 1, the critic alone for the first 10 updates, bf16, the update as CUDA graphs; micro trainer: up to 10 passes, a pass stopped at KL 0.02), behind flags; P4's benchmark then decides what to keep | the scheme runs in a smoke run with his numbers | E50: as is, worse (steps too big) |
+| P2 | Make the multi-pass learner keep up (E21: 64 steps fell to ~1,160 steps/s and ran out of memory): per-step overhead, graphs, fewer games if needed | steps/s within ~20% of today's at his pass count | dropped: more passes and steps did not help (E50, E51) |
+| P3 | A fast, high-signal benchmark: training on one drill only (focus fire level 1: the model 0.53, the script 0.95), wins by update; equal games and equal wall time per arm, ABAB, small evaluations (100-200 fights: the gaps here are tens of points) | two arms 20-30 min each separate by more than run-to-run noise | built: three drills, E50 |
+| P4 | His update vs ours on P3, then tune (passes, minibatch, learning rate, KL stop, critic warm-up); the winner becomes the default, checked once on the combat fight | a default that learns P3 clearly faster per game and per hour | E51: level, the default stays |
+| P4b | The fight's own benchmark: training at the evaluation's stage held, the training win rate per 5 min (~2,900 fights a bin), against the start measured as it is; then its settings (anchor, reward, step) | a setting that lifts the fight above the start | E58: a fixed lr of 2e-5; E67-E68: the anchor at the start, not the clone, lifts the plateau. The main line (`~/wc3/tools/ladder.sh`, 2 h a leg, each anchored at its start): E69 ld2-2h, E70 ld3-4h (fixed eval at 1.0 / 1.2: 0.70 / 0.49, hl20 0.60 / 0.36), E71 on |
+| P5 | On-policy distillation from the drill scripts: in drill fights each step, the script's orders for the learner's units as labels, a light cloning loss beside PPO, faded as the model passes the script | a drill learned faster with it than PPO alone | E54: focus fire +14 points; E55: it costs where PPO alone gets past the teacher (dive). Teach only with a teacher far above PPO's plateau |
+| P6 | Varied micro drills, randomly instantiated (army mixes, positions, hp, terrain): body blocking and trapping (a hook op to remove trees between fights), surrounding a fleeing unit, kiting, plus the built ones (C3); each learned with P5, then mixed | each drill learned; the mix lifts the combat fight | surround built and passed (0.80 vs 0.00); body blocking needs a hook op (remove destructables). E61: drills beside the fight cost it 2-3 points: drills teach drills, not the fight |
+| P7 | A scripted bot for the whole combat fight, then P5 from it on the fight, PPO alone once the model passes it. A teacher must play from the model's slot, where nothing casts on its own (E54: drills whose script cannot cast teach nothing there), so the bot gives its casts itself: per spell a rule (Chain Lightning on the largest cluster, Healing Wave on the most hurt ally, Feral Spirit and Serpent Ward when engaged, War Stomp with 3+ near, Bloodlust on melee, Purge on summons, ...), each gated from the model's slot. Cheaper, first: the built-in AI's own casts as the labels (warcraftsim's shadow labels): in teacher games the learning side is a computer slot, and the casts the AI gives its units (the observation's orders, origin script) become that step's label through `replays/convert.py`, as bot games became cloning data | the bot from the model's slot beats attack-move at stage 1.0 and above; the model beats l6la-450 on the fight | E64: the bot beats attack-move as a computer slot (0.88 / 0.66 / 0.40 at 0.85 / 1.0 / 1.2). E66: as a teacher (from a computer slot, 0.62) it costs 9 points: too close to the model. Dropped as a teacher; kept as a bench opponent |
+
 ## 0. Baselines (before anything else)
 
 | # | Idea | Moves | Rests on | Status |
